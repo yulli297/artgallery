@@ -28,37 +28,74 @@ GitHub에는 위 파일만 올리면 됩니다. `node_modules`, `data` 폴더는
 | 이름 | 값 | 꼭 필요? |
 |---|---|---|
 | `SESSION_SECRET` | 아무 긴 영문·숫자 (예: `gallery-2026-abcd1234xyz`) | 예 |
-| `FIREBASE_SERVICE_ACCOUNT` | Firebase 서비스 계정 JSON 전체 | 예 (실제 수업용) |
+| `FIREBASE_CONFIG` | Firebase 웹 앱 설정(firebaseConfig) 전체 | 예 (실제 수업용) |
+| `FIREBASE_SERVER_PASSWORD` | Firebase에 만든 서버 전용 계정의 비밀번호 | 예 (실제 수업용) |
 | `TEACHER_PASSWORD_6_1` ~ `TEACHER_PASSWORD_6_5` | 반별 교사 비밀번호 (안 넣으면 `1234`) | 선택 |
-| `FIREBASE_STORAGE_BUCKET` | Storage 버킷 이름 (자동으로 못 찾을 때만) | 선택 |
 | `CLASS_LIST` | 반 목록 (기본값 `6-1,6-2,6-3,6-4,6-5`) | 선택 |
 | `MAX_STUDENTS` | 반별 최대 번호 (기본값 30) | 선택 |
 
 - 교사 비밀번호는 모든 반이 `1234`로 설정되어 있습니다. 반별로 바꾸려면 위 환경변수를 넣으면 됩니다.
 - `SESSION_SECRET`이 없으면 서버가 다시 켜질 때마다 모두 다시 로그인해야 합니다.
 
-## Firebase 연결
+## Firebase 연결 (서비스 계정 키 없이)
 
-Firebase를 연결하지 않으면 서버 안의 임시 폴더에 저장됩니다.
-Render 무료 서버는 다시 켜질 때 이 폴더를 지우므로, 실제 수업 전에는 꼭 연결해 주세요.
+학교·교육용 구글 계정은 조직 정책 때문에 **서비스 계정 키를 만들 수 없어요.**
+그래서 이 서버는 키 대신 Firebase에 만든 **서버 전용 계정(이메일+비밀번호)**으로 접속합니다.
+Firebase를 연결하지 않으면 서버 안 임시 폴더에 저장되고, Render 무료 서버는 다시 켜질 때 이 폴더를 지우므로 실제 수업 전에는 꼭 연결해 주세요.
 
-### 1) Firestore (글자 정보 저장)
-1. Firebase 콘솔에서 프로젝트를 고릅니다.
-2. **Firestore Database → 데이터베이스 만들기**를 누릅니다. 위치는 `asia-northeast3 (서울)`을 추천합니다.
+### 1) 웹 앱 설정 복사 → `FIREBASE_CONFIG`
+1. Firebase 콘솔 → 톱니바퀴 ⚙ → **프로젝트 설정** → **일반** 탭 → 아래쪽 **내 앱**으로 갑니다.
+2. 앱이 없으면 **웹(</> 모양)** 아이콘을 눌러 앱을 하나 추가합니다(이름은 아무거나, 호스팅 체크 안 함).
+3. **SDK 설정 및 구성**에서 **구성(Config)**을 고르면 `const firebaseConfig = { apiKey: ... };` 가 보입니다.
+4. 이 부분을 통째로 복사해서 Render 환경변수 `FIREBASE_CONFIG`에 붙여넣습니다. (중괄호 `{ }` 부분만 붙여넣어도 됩니다.)
 
-### 2) Storage (그림 파일 저장)
-1. Firebase 콘솔에서 **Storage → 시작하기**를 누릅니다. (Blaze 요금제가 연결되어 있어야 합니다.)
-2. 위치는 서울을 고르고, 보안 규칙은 기본값(프로덕션 모드) 그대로 두면 됩니다.
-3. 서버가 켜질 때 버킷을 자동으로 찾고, 3D 화면에서 그림을 불러올 수 있도록 설정까지 해 둡니다.
-   - Render 로그에 `[그림 저장소] Firebase Storage 사용`이 보이면 연결된 것입니다.
-   - 자동으로 못 찾으면, Storage 화면 위쪽의 `gs://...` 뒤 이름을 `FIREBASE_STORAGE_BUCKET`에 넣어 주세요.
+### 2) 서버 전용 계정 만들기 → `FIREBASE_SERVER_PASSWORD`
+1. 왼쪽 메뉴 **빌드 → Authentication → 시작하기** → **이메일/비밀번호**를 **사용 설정**하고 저장합니다.
+2. **Users** 탭 → **사용자 추가**를 누르고 아래처럼 만듭니다.
+   - 이메일: `gallery-server@artgallery.app` (꼭 이대로)
+   - 비밀번호: 직접 정한 긴 비밀번호
+3. 이 비밀번호를 Render 환경변수 `FIREBASE_SERVER_PASSWORD`에 넣습니다.
 
-### 3) 서비스 계정 키
-1. **프로젝트 설정(톱니바퀴) → 서비스 계정 → 새 비공개 키 생성**을 눌러 JSON 파일을 받습니다.
-2. 받은 JSON 파일을 메모장으로 열고, 내용 전체를 복사해 Render 환경변수 `FIREBASE_SERVICE_ACCOUNT`에 붙여넣습니다.
-3. Render에서 다시 배포합니다. 교사 관리 창에 노란 경고가 안 보이면 Firestore와 Storage가 모두 연결된 것입니다.
+### 3) Firestore 만들고 규칙 붙여넣기
+1. **빌드 → Firestore Database → 데이터베이스 만들기** (위치: `asia-northeast3 (서울)`, 프로덕션 모드)
+2. **규칙** 탭의 내용을 모두 지우고 아래를 붙여넣은 뒤 **게시**를 누릅니다.
 
-> 서비스 계정 키는 비밀번호와 같습니다. GitHub에 올리지 말고 Render 환경변수에만 넣어 주세요.
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null && request.auth.token.email == 'gallery-server@artgallery.app';
+    }
+  }
+}
+```
+
+### 4) Storage 시작하고 규칙 붙여넣기
+1. **빌드 → Storage → 시작하기** (위치: 서울, 프로덕션 모드)
+2. **규칙** 탭의 내용을 모두 지우고 아래를 붙여넣은 뒤 **게시**를 누릅니다.
+
+```
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.token.email == 'gallery-server@artgallery.app';
+    }
+  }
+}
+```
+
+규칙 덕분에 서버 전용 계정만 데이터를 읽고 쓸 수 있습니다. 학생 태블릿은 서버가 건네준 그림 주소로만 그림을 봅니다.
+
+### 연결 확인
+Render에서 다시 배포한 뒤 **Logs**에 아래 두 줄이 보이면 성공입니다.
+```
+[저장소] Firebase Firestore 사용: 프로젝트ID
+[그림 저장소] Firebase Storage 사용: 프로젝트ID.firebasestorage.app
+```
+실패하면 로그에 이유가 한국어로 나옵니다. 예: 비밀번호가 틀림, 규칙이 막고 있음.
+교사 관리 창에 노란 경고가 안 보이면 Firestore와 Storage가 모두 연결된 것입니다.
 
 ### 저장 구조 (서버 부담 줄이기)
 

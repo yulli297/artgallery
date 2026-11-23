@@ -7,12 +7,12 @@
     "start": "node server.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "compression": "^1.7.4",
     "express": "^4.19.2",
-    "firebase-admin": "^12.1.0",
+    "firebase": "^13.4.0",
     "three": "0.149.0"
   }
 }

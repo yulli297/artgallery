@@ -3,8 +3,8 @@
  * 우리 반 가상 미술관 - 서버
  * - 학생: 반 + 번호 + 숫자 4자리 비밀번호 (선생님이 만들어서 인쇄해 나눠 줌)
  * - 교사: 반 + 교사 비밀번호 (기본값 1234) → 비밀번호 만들기·인쇄, 전시 열기, 작품 내리기, 감상평 지우기
- * - 저장: 글자 정보는 Firestore, 그림 파일은 Firebase Storage
- *         (FIREBASE_SERVICE_ACCOUNT가 없으면 data 폴더에 임시 저장)
+ * - 저장: 글자 정보는 Firestore, 그림 파일은 Firebase Storage (서비스 계정 키 없이 접속)
+ *         (FIREBASE_CONFIG가 없으면 data 폴더에 임시 저장)
  * - 명화: 시카고 미술관 퍼블릭 도메인 작품 + 학생이 직접 찾아 올린 명화
  */
 const express = require('express');
@@ -32,39 +32,69 @@ function teacherPw(cid) {
 }
 
 // ================= 저장소 =================
-let admin = null, db = null, bucket = null, projectId = '';
-if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  try {
-    admin = require('firebase-admin');
-    const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    projectId = sa.project_id;
-    admin.initializeApp({ credential: admin.credential.cert(sa) });
-    db = admin.firestore();
-    console.log('[저장소] Firebase Firestore 사용');
-  } catch (e) {
-    admin = null;
-    console.error('[저장소] Firebase 연결 실패, 임시 저장소를 사용합니다:', e.message);
-  }
-}
-if (!db) console.warn('[저장소] 임시 저장소(data 폴더) 사용 중 - Render 무료 서버에서는 서버가 다시 켜지면 데이터가 지워집니다.');
+/*
+ * 서비스 계정 키 없이 Firebase에 접속합니다.
+ * (학교·교육용 구글 계정은 조직 정책 때문에 서비스 계정 키를 만들 수 없어서)
+ * 서버는 Firebase Authentication에 만든 '서버 전용 계정'으로 로그인하고,
+ * Firestore·Storage 보안 규칙은 이 계정만 읽고 쓸 수 있게 막아 둡니다. (README 참고)
+ * 필요한 환경변수: FIREBASE_CONFIG (웹 앱 설정), FIREBASE_SERVER_PASSWORD (서버 전용 계정 비밀번호)
+ */
+const FB_EMAIL = process.env.FIREBASE_SERVER_EMAIL || 'gallery-server@artgallery.app';
+let fb = null; // { F: firestore 함수들, db, ST: storage 함수들, storage, bucket }
 
-// Firebase Storage 찾기 (새 프로젝트: 프로젝트ID.firebasestorage.app / 예전 프로젝트: 프로젝트ID.appspot.com)
-async function initBucket() {
-  if (!admin) return;
-  const names = [process.env.FIREBASE_STORAGE_BUCKET, `${projectId}.firebasestorage.app`, `${projectId}.appspot.com`].filter(Boolean);
-  for (const n of names) {
-    try {
-      const b = admin.storage().bucket(n);
-      const [ok] = await b.exists();
-      if (ok) { bucket = b; break; }
-    } catch (e) { console.warn('[그림 저장소] 확인 실패:', n, e.message); }
+// Firebase 콘솔의 firebaseConfig 내용을 그대로 붙여넣어도 읽을 수 있게 (const firebaseConfig = { apiKey: "..." ... })
+function parseConfig(s) {
+  const o = {};
+  String(s || '').replace(/["']?(\w+)["']?\s*:\s*["']([^"']+)["']/g, (m, k, v) => { o[k] = v; return m; });
+  return o;
+}
+function fbError(e) {
+  const c = (e && e.code) || '';
+  if (/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c)) return `서버 전용 계정(${FB_EMAIL})의 이메일이나 비밀번호가 맞지 않아요. Authentication에 이 계정이 있는지, FIREBASE_SERVER_PASSWORD가 맞는지 확인해 주세요.`;
+  if (/operation-not-allowed/.test(c)) return 'Authentication에서 "이메일/비밀번호" 로그인을 사용 설정해 주세요.';
+  if (/permission-denied|unauthorized/.test(c)) return '보안 규칙이 막고 있어요. README의 규칙을 그대로 붙여넣고 [게시]를 눌렀는지 확인해 주세요.';
+  if (/api-key|invalid-api-key/.test(c)) return 'FIREBASE_CONFIG의 apiKey가 올바르지 않아요.';
+  if (/not-found|NOT_FOUND/.test(c + (e && e.message))) return 'Firestore 데이터베이스가 아직 없어요. Firestore Database → 데이터베이스 만들기를 눌러 주세요.';
+  return (c ? c + ' ' : '') + (e && e.message ? e.message : e);
+}
+async function initFirebase() {
+  const cfg = parseConfig(process.env.FIREBASE_CONFIG);
+  if (!cfg.apiKey || !cfg.projectId) {
+    console.warn('[저장소] FIREBASE_CONFIG가 없어서 임시 저장소(data 폴더)를 씁니다. Render 무료 서버에서는 서버가 다시 켜지면 지워집니다.');
+    return;
   }
-  if (!bucket) { console.warn('[그림 저장소] Firebase Storage를 찾지 못해 그림을 임시 폴더에 저장합니다. README를 보고 Storage를 켜 주세요.'); return; }
-  console.log('[그림 저장소] Firebase Storage 사용:', bucket.name);
+  if (!process.env.FIREBASE_SERVER_PASSWORD) { console.warn('[저장소] FIREBASE_SERVER_PASSWORD가 없어서 임시 저장소를 씁니다.'); return; }
+  const { initializeApp } = require('firebase/app');
+  const { getAuth, signInWithEmailAndPassword } = require('firebase/auth');
+  const F = require('firebase/firestore');
+  const fbApp = initializeApp(cfg);
+  // 잠깐의 네트워크 문제로 임시 저장소로 넘어가지 않도록 몇 번 다시 시도
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await signInWithEmailAndPassword(getAuth(fbApp), FB_EMAIL, process.env.FIREBASE_SERVER_PASSWORD);
+      const db = F.getFirestore(fbApp);
+      await F.getDoc(F.doc(db, 'meta', 'ping')); // 읽기 권한 확인
+      fb = { F, db };
+      console.log('[저장소] Firebase Firestore 사용:', cfg.projectId);
+      break;
+    } catch (e) {
+      const network = /network|unavailable|deadline/i.test((e && e.code) || '');
+      if (network && attempt < 4) { console.warn(`[저장소] Firebase 연결 재시도 (${attempt}/3)…`); await new Promise(r => setTimeout(r, 5000)); continue; }
+      console.error('[저장소] Firebase 연결 실패 → 임시 저장소를 씁니다. 이유:', fbError(e));
+      fb = null;
+      return;
+    }
+  }
+  if (!cfg.storageBucket) { console.warn('[그림 저장소] FIREBASE_CONFIG에 storageBucket이 없어서 그림을 임시 폴더에 저장합니다.'); return; }
   try {
-    // 3D 화면에서 그림을 바로 불러올 수 있도록 허용 (실패해도 서버를 거쳐서 보여 줌)
-    await bucket.setCorsConfiguration([{ origin: ['*'], method: ['GET', 'HEAD'], responseHeader: ['Content-Type'], maxAgeSeconds: 86400 }]);
-  } catch (e) { console.warn('[그림 저장소] CORS 설정을 못 했어요. 그림은 서버를 거쳐 보여 줍니다:', e.message); }
+    const ST = require('firebase/storage');
+    const storage = ST.getStorage();
+    await ST.uploadString(ST.ref(storage, 'meta/ping.txt'), 'ok'); // 쓰기 권한 확인
+    Object.assign(fb, { ST, storage, bucket: cfg.storageBucket });
+    console.log('[그림 저장소] Firebase Storage 사용:', cfg.storageBucket);
+  } catch (e) {
+    console.warn('[그림 저장소] Storage에 연결하지 못해 그림을 임시 폴더에 저장합니다. 이유:', fbError(e));
+  }
 }
 
 const DATA_DIR = path.join(__dirname, 'data');
@@ -81,9 +111,9 @@ async function getDoc(col, id) {
   const p = (async () => {
     try {
       let v = null;
-      if (db) {
-        const s = await db.collection(col).doc(id).get();
-        v = s.exists ? s.data() : null;
+      if (fb) {
+        const s = await fb.F.getDoc(fb.F.doc(fb.db, col, id));
+        v = s.exists() ? s.data() : null;
       } else {
         const f = path.join(DATA_DIR, col, encodeURIComponent(id) + '.json');
         if (fs.existsSync(f)) v = JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -102,7 +132,7 @@ function setDoc(col, id, v) {
   const snapshot = JSON.stringify(v);
   const prev = writeChain.get(k) || Promise.resolve();
   const next = prev.catch(() => {}).then(async () => {
-    if (db) await db.collection(col).doc(id).set(JSON.parse(snapshot));
+    if (fb) await fb.F.setDoc(fb.F.doc(fb.db, col, id), JSON.parse(snapshot));
     else {
       const d = path.join(DATA_DIR, col);
       fs.mkdirSync(d, { recursive: true });
@@ -135,13 +165,10 @@ async function flushPending() {
 // ----- 그림 파일 -----
 const IMG_PATH = /^img\/(\d+-\d+)\/(\d+)\/\d+-[0-9a-f]{8}\.jpg$/;
 async function saveImage(p, buf) {
-  if (bucket) {
-    const token = crypto.randomUUID();
-    await bucket.file(p).save(buf, {
-      resumable: false, contentType: 'image/jpeg',
-      metadata: { cacheControl: 'public, max-age=31536000', metadata: { firebaseStorageDownloadTokens: token } }
-    });
-    return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(p)}?alt=media&token=${token}`;
+  if (fb && fb.storage) {
+    const r = fb.ST.ref(fb.storage, p);
+    await fb.ST.uploadBytes(r, new Uint8Array(buf), { contentType: 'image/jpeg', cacheControl: 'public, max-age=31536000' });
+    return await fb.ST.getDownloadURL(r);
   }
   const f = path.join(UP_DIR, p);
   fs.mkdirSync(path.dirname(f), { recursive: true });
@@ -149,17 +176,17 @@ async function saveImage(p, buf) {
   return '/uploads/' + p;
 }
 async function readImage(p) {
-  if (bucket) { const [b] = await bucket.file(p).download(); return b; }
+  if (fb && fb.storage) return Buffer.from(await fb.ST.getBytes(fb.ST.ref(fb.storage, p)));
   const f = path.join(UP_DIR, p);
   return fs.existsSync(f) ? fs.readFileSync(f) : null;
 }
 function deleteImage(p) {
-  if (bucket) bucket.file(p).delete().catch(() => {});
+  if (fb && fb.storage) fb.ST.deleteObject(fb.ST.ref(fb.storage, p)).catch(() => {});
   else fs.promises.unlink(path.join(UP_DIR, p)).catch(() => {});
 }
 function validUrl(p, url) {
   if (typeof url !== 'string') return false;
-  if (bucket) return url.startsWith(`https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(p)}?alt=media&token=`);
+  if (fb && fb.storage) return url.startsWith(`https://firebasestorage.googleapis.com/v0/b/${fb.bucket}/o/${encodeURIComponent(p)}?alt=media`);
   return url === '/uploads/' + p;
 }
 function ownPath(u, p) {
@@ -253,7 +280,7 @@ function fail(k) {
 
 // ================= 기본 정보 =================
 app.get('/api/config', (req, res) => {
-  res.json({ classes: CLASSES, maxStudents: MAX_STUDENTS, storage: db ? 'firestore' : 'local', images: bucket ? 'firebase' : 'local' });
+  res.json({ classes: CLASSES, maxStudents: MAX_STUDENTS, storage: fb ? 'firestore' : 'local', images: fb && fb.storage ? 'firebase' : 'local' });
 });
 
 // ================= 로그인 =================
@@ -654,8 +681,10 @@ app.use('/vendor', express.static(path.join(__dirname, 'node_modules', 'three', 
 app.use('/uploads', express.static(UP_DIR, { maxAge: '365d', immutable: true })); // Storage가 없을 때만 쓰임
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.listen(PORT, async () => {
-  console.log(`가상 미술관 서버 실행 중: http://localhost:${PORT}  (반: ${CLASS_IDS.join(', ')})`);
-  await initBucket();
-  loadCatalog();
+// Firebase 연결을 먼저 마친 뒤 서버를 엶 (연결 전 요청이 임시 저장소에 저장되지 않게)
+initFirebase().finally(() => {
+  app.listen(PORT, () => {
+    console.log(`가상 미술관 서버 실행 중: http://localhost:${PORT}  (반: ${CLASS_IDS.join(', ')})`);
+    loadCatalog();
+  });
 });
