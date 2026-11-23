@@ -758,23 +758,78 @@ async function aicItems(q) {
     src: 'aic', museum: '시카고 미술관', id: a.id, imageId: a.image_id, title: a.title, artist: a.artist_title || '작가 미상', date: a.date_display || ''
   }));
 }
+// ----- 한글 검색어를 영어로 바꾸기 -----
+// 1) 자주 쓰는 화가 이름·그림 낱말은 사전으로 바로 바꿈 (번역 서비스 사용량 0)
+// 2) 사전에 없으면 무료 번역 서비스 MyMemory 사용 (TRANSLATE_EMAIL을 넣으면 하루 한도가 늘어남)
+const KO_DICT = {
+  '고흐': 'van Gogh', '반고흐': 'van Gogh', '빈센트반고흐': 'van Gogh', '모네': 'Monet', '클로드모네': 'Monet', '마네': 'Manet',
+  '르누아르': 'Renoir', '세잔': 'Cezanne', '고갱': 'Gauguin', '드가': 'Degas', '쇠라': 'Seurat', '피사로': 'Pissarro', '시슬레': 'Sisley',
+  '카유보트': 'Caillebotte', '커샛': 'Cassatt', '카사트': 'Cassatt', '렘브란트': 'Rembrandt', '페르메이르': 'Vermeer', '베르메르': 'Vermeer',
+  '루벤스': 'Rubens', '다빈치': 'Leonardo da Vinci', '레오나르도다빈치': 'Leonardo da Vinci', '미켈란젤로': 'Michelangelo', '라파엘로': 'Raphael',
+  '보티첼리': 'Botticelli', '티치아노': 'Titian', '카라바조': 'Caravaggio', '벨라스케스': 'Velazquez', '고야': 'Goya', '엘그레코': 'El Greco',
+  '뒤러': 'Durer', '브뤼헐': 'Bruegel', '브뢰겔': 'Bruegel', '호쿠사이': 'Hokusai', '히로시게': 'Hiroshige', '칸딘스키': 'Kandinsky',
+  '클림트': 'Klimt', '뭉크': 'Munch', '마티스': 'Matisse', '피카소': 'Picasso', '터너': 'Turner', '컨스터블': 'Constable', '밀레': 'Millet',
+  '코로': 'Corot', '들라크루아': 'Delacroix', '앵그르': 'Ingres', '휘슬러': 'Whistler', '사전트': 'Sargent', '윈슬로호머': 'Winslow Homer',
+  '툴루즈로트레크': 'Toulouse-Lautrec', '로트레크': 'Toulouse-Lautrec', '로댕': 'Rodin', '샤갈': 'Chagall', '몬드리안': 'Mondrian', '클레': 'Klee',
+  '프리드리히': 'Caspar David Friedrich', '와토': 'Watteau', '부셰': 'Boucher', '프라고나르': 'Fragonard', '할스': 'Frans Hals', '반다이크': 'van Dyck',
+  '꽃': 'flowers', '해바라기': 'sunflowers', '장미': 'roses', '수련': 'water lilies', '튤립': 'tulips', '나무': 'trees', '숲': 'forest', '산': 'mountain',
+  '바다': 'sea', '강': 'river', '호수': 'lake', '하늘': 'sky', '구름': 'clouds', '비': 'rain', '눈': 'snow', '봄': 'spring', '여름': 'summer',
+  '가을': 'autumn', '겨울': 'winter', '밤': 'night', '별': 'stars', '달': 'moon', '해': 'sun', '해돋이': 'sunrise', '일출': 'sunrise',
+  '노을': 'sunset', '석양': 'sunset', '일몰': 'sunset', '풍경': 'landscape', '풍경화': 'landscape', '정물': 'still life', '정물화': 'still life',
+  '초상화': 'portrait', '자화상': 'self-portrait', '고양이': 'cat', '개': 'dog', '강아지': 'dog', '말': 'horse', '새': 'bird', '물고기': 'fish',
+  '소': 'cow', '양': 'sheep', '사자': 'lion', '호랑이': 'tiger', '나비': 'butterfly', '사과': 'apples', '과일': 'fruit', '배': 'boat', '보트': 'boat',
+  '기차': 'train', '다리': 'bridge', '집': 'house', '성': 'castle', '교회': 'church', '도시': 'city', '거리': 'street', '정원': 'garden', '공원': 'park',
+  '들판': 'field', '밀밭': 'wheat field', '아이': 'child', '어린이': 'children', '엄마': 'mother', '어머니': 'mother', '가족': 'family',
+  '여인': 'woman', '여자': 'woman', '남자': 'man', '소녀': 'girl', '소년': 'boy', '천사': 'angel', '춤': 'dance', '발레': 'ballet', '음악': 'music',
+  '악기': 'musical instrument', '책': 'book', '편지': 'letter', '음식': 'food', '시장': 'market', '농부': 'farmer', '마을': 'village', '파도': 'wave',
+  '폭풍': 'storm', '모자': 'hat', '왕': 'king', '여왕': 'queen', '기사': 'knight', '신화': 'mythology', '인상주의': 'impressionism', '인상파': 'impressionism',
+  '일본': 'Japanese', '프랑스': 'French', '네덜란드': 'Dutch', '파리': 'Paris', '베네치아': 'Venice', '런던': 'London'
+};
+const koCache = new Map();
+async function toEnglish(q) {
+  const k = q.trim();
+  if (koCache.has(k)) return koCache.get(k);
+  let out = KO_DICT[k.replace(/\s+/g, '')];
+  if (!out) { // 낱말마다 사전에 있으면 이어 붙임 (예: "모네 수련" → "Monet water lilies")
+    const parts = k.split(/\s+/).map(t => KO_DICT[t] || (/[ㄱ-힣]/.test(t) ? null : t));
+    if (parts.every(Boolean)) out = parts.join(' ');
+  }
+  if (!out) {
+    const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(k) + '&langpair=ko|en' +
+      (process.env.TRANSLATE_EMAIL ? '&de=' + encodeURIComponent(process.env.TRANSLATE_EMAIL) : '');
+    const j = await getJson(url, 6000);
+    const t = j && j.responseData && j.responseData.translatedText;
+    if (j.quotaFinished || !t || /[ㄱ-힣]/.test(t) || /MYMEMORY|QUOTA|INVALID/i.test(t)) throw new Error('translate failed');
+    out = t.replace(/[.!?。]+$/, '').trim();
+  }
+  koCache.set(k, out);
+  if (koCache.size > 500) koCache.delete(koCache.keys().next().value);
+  return out;
+}
+
 const searchCache = new Map();
 app.get('/api/art/search', auth, async (req, res) => {
   try {
     const q = str(req.query.q, 60);
     if (q.length < 2) return res.json({ items: [] });
     const k = q.toLowerCase();
-    if (searchCache.has(k)) return res.json({ items: searchCache.get(k) });
-    const lists = await Promise.allSettled([aicItems(q), cmaSearch(q), metSearch(q), smkSearch(q), euSearch(q)]);
+    if (searchCache.has(k)) return res.json(searchCache.get(k));
+    let qq = q, translated = null;
+    if (/[ㄱ-힣]/.test(q)) { // 한글이면 영어로 바꿔서 검색
+      try { qq = translated = await toEnglish(q); }
+      catch (e) { return res.status(502).json({ error: '한글을 영어로 바꾸지 못했어요. 영어로 검색해 보세요. (예: 고흐 → van Gogh, 꽃 → flowers)' }); }
+    }
+    const lists = await Promise.allSettled([aicItems(qq), cmaSearch(qq), metSearch(qq), smkSearch(qq), euSearch(qq)]);
     lists.forEach((l, i) => { if (l.status === 'rejected' && i < 4) console.warn('[명화 검색] 실패:', ['시카고', '클리블랜드', '메트로폴리탄', '덴마크'][i], l.reason && l.reason.message); });
     const ok = lists.filter(l => l.status === 'fulfilled').map(l => l.value);
     if (!ok.length) throw new Error('all failed');
     // 세 미술관 결과를 번갈아 섞기
     const items = [];
     for (let i = 0; items.length < 80 && ok.some(l => l[i]); i++) ok.forEach(l => { if (l[i]) items.push(l[i]); });
-    searchCache.set(k, items);
+    const out = { items, translated };
+    searchCache.set(k, out);
     if (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value);
-    res.json({ items });
+    res.json(out);
   } catch (e) {
     console.warn('[명화 검색] 실패', e.message);
     res.status(502).json({ error: '명화 검색이 잠시 안 돼요. 추천 명화에서 고르거나 직접 올려 주세요.' });
