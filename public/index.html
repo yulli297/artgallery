@@ -53,6 +53,9 @@ label.f{display:block;font-size:14px;color:var(--muted);margin:12px 0 6px}
 #cross:before{left:6px;top:0;width:2px;height:14px}#cross:after{top:6px;left:0;height:2px;width:14px}
 #aim{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:rgba(43,38,34,.82);color:#fff;padding:8px 16px;border-radius:20px;font-size:15px;pointer-events:none;max-width:70vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #help{position:absolute;right:12px;bottom:14px;font-size:12px;color:#fff;background:rgba(43,38,34,.55);padding:6px 10px;border-radius:8px;pointer-events:none;line-height:1.5;text-align:right}
+#speed{position:absolute;right:12px;bottom:62px;display:flex;gap:4px;align-items:center;font-size:12px;color:#fff;background:rgba(43,38,34,.55);padding:5px 8px;border-radius:8px}
+#speed button{font-size:12px;padding:3px 9px;border-radius:6px;background:rgba(255,255,255,.85);border:none}
+#speed button.on{background:var(--accent);color:#fff}
 #joy{position:absolute;left:24px;bottom:24px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.55);touch-action:none}
 #knob{position:absolute;left:41px;top:41px;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.8);box-shadow:0 2px 6px rgba(0,0,0,.25)}
 #banner{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);text-align:center;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.6);pointer-events:none;transition:opacity 1s}
@@ -102,6 +105,7 @@ table.tc td.pin{font-family:Consolas,monospace;font-size:18px;letter-spacing:2px
 table.tc td.acts{text-align:right;white-space:nowrap}
 table.tc td.acts button{padding:4px 9px;font-size:13px;margin-left:4px}
 .tabs button{white-space:nowrap}
+.card small.mus{color:var(--accent2)}
 @media (max-width:820px){.layouts{grid-template-columns:repeat(2,1fr)}.sel{flex-direction:column}.sel img{width:100%}}
 </style>
 </head>
@@ -144,6 +148,7 @@ table.tc td.acts button{padding:4px 9px;font-size:13px;margin-left:4px}
     <div class="btns" id="hBtns"></div>
   </div>
   <div id="aim" class="hidden"></div>
+  <div id="speed">둘러보기 속도 <button data-s="slow">느리게</button><button data-s="normal">보통</button><button data-s="fast">빠르게</button></div>
   <div id="help">WASD·방향키: 이동 &nbsp;|&nbsp; 드래그: 둘러보기<br>작품 누르기: 크게 보기 / 바꾸기</div>
   <div id="joy" class="hidden"><div id="knob"></div></div>
   <div id="banner" style="opacity:0"><h2 id="bnT"></h2><p id="bnP"></p></div>
@@ -227,7 +232,11 @@ let renderer, scene, camera, world = null, slots = [], colWalls = [], colBoxes =
 const texCache = new Map();
 let needRender = true;
 const invalidate = () => { needRender = true; };
-const P = { x: 0, z: 0, yaw: 0, pitch: 0 };
+const P = { x: 0, z: 0, yaw: 0, pitch: 0, ty: 0, tp: 0 }; // ty·tp: 손가락이 가리키는 목표 각도 (화면은 천천히 따라감)
+// 둘러보기 속도 (어지럽지 않게 기본은 '느리게')
+const LOOK_SPEEDS = { slow: { drag: 0.0018, key: 0.9, label: '느리게' }, normal: { drag: 0.003, key: 1.3, label: '보통' }, fast: { drag: 0.0045, key: 1.8, label: '빠르게' } };
+let lookSpeed = 'slow';
+try { const v = window.localStorage.getItem('vg_look'); if (LOOK_SPEEDS[v]) lookSpeed = v; } catch (e) {}
 const keys = {};
 const joy = { x: 0, y: 0 };
 const EYE = 1.6, RAD = 0.35;
@@ -255,6 +264,10 @@ function init3D() {
   (function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (S.view) { move(dt); aimT += dt; if (aimT > 0.2) { aimT = 0; updateAim(); } }
+    // 목표 각도로 부드럽게 회전 (갑자기 휙 돌지 않게)
+    const k = Math.min(1, dt * 7);
+    if (Math.abs(P.ty - P.yaw) > 0.0005) P.yaw += (P.ty - P.yaw) * k; else P.yaw = P.ty;
+    if (Math.abs(P.tp - P.pitch) > 0.0005) P.pitch += (P.tp - P.pitch) * k; else P.pitch = P.tp;
     // 움직이거나 그림이 바뀔 때만 다시 그림 (가만히 있을 때 태블릿 발열·배터리 절약)
     const key = P.x.toFixed(3) + ',' + P.z.toFixed(3) + ',' + P.yaw.toFixed(4) + ',' + P.pitch.toFixed(4);
     if (needRender || key !== lastKey) {
@@ -472,6 +485,16 @@ function loadUp(url, p, use) {
   });
 }
 const upImg = (url, p, attrs) => `<img ${attrs || ''} src="${esc(url)}" onerror="this.onerror=null;this.src='${esc(upProxy(p))}'" alt="">`;
+/* 클리블랜드·메트로폴리탄 미술관 그림: 기기가 바로 받고, 막히면 서버를 거쳐 받음 */
+let extDirect = true;
+const extProxy = u => `/api/ext?u=${encodeURIComponent(u)}`;
+function loadExt(u, use) {
+  const first = extDirect ? u : extProxy(u);
+  loadTex(first, use, true, () => {
+    if (first === u) { extDirect = false; loadTex(extProxy(u), use, true); } else toast('그림을 불러오지 못했어요.');
+  });
+}
+const extImg = (u, attrs) => `<img ${attrs || ''} src="${esc(u)}" onerror="this.onerror=null;this.src='${esc(extProxy(u))}'" alt="">`;
 // 고른 그림 파일(아직 저장 전)을 바로 3D 액자에 보여 주기
 function texFromData(data, onReady) {
   const img = new Image(), tex = new THREE.Texture(img);
@@ -480,6 +503,7 @@ function texFromData(data, onReady) {
   return tex;
 }
 function frameImg(f, size, attrs) {
+  if (f.src === 'ext') return extImg(f.img, attrs);
   if (f.src === 'up') return f._data ? `<img ${attrs || ''} src="${f._data}" alt="">` : upImg(f.url, f.path, attrs);
   return artImg(f.imageId, size, attrs);
 }
@@ -496,6 +520,7 @@ function applySlot(slot) {
     const use = tex => { if (slot.art.parent && S.g.frames[slot.index] === f) setArtTex(slot, tex); };
     if (f._tex) { setArtTex(slot, f._tex); return; }
     if (f.src === 'up') { loadUp(f.url, f.path, use); return; }
+    if (f.src === 'ext') { loadExt(f.img, use); return; }
     const want = f.imageId;
     probeArt(want).then(() => loadTex(artUrl(want, 'm'), use, true, () => {
       if (artMode === 'direct') { artMode = 'proxy'; loadTex(artUrl(want, 'm'), use, true); } else toast('그림을 불러오지 못했어요.');
@@ -516,8 +541,8 @@ const paintingImg = attrs => S.pending ? `<img ${attrs || ''} src="${S.pending.d
 /* ================= 움직이기 ================= */
 function spawn() {
   const L = LAYOUTS[S.g.layout] || LAYOUTS.ell;
-  P.x = L.eye[0]; P.z = L.eye[1]; P.pitch = 0;
-  P.yaw = Math.atan2(-(L.look[0] - L.eye[0]), -(L.look[1] - L.eye[1]));
+  P.x = L.eye[0]; P.z = L.eye[1]; P.pitch = P.tp = 0;
+  P.yaw = P.ty = Math.atan2(-(L.look[0] - L.eye[0]), -(L.look[1] - L.eye[1]));
 }
 function isTyping() { const a = document.activeElement; return !$('#modal').classList.contains('hidden') || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)); }
 function move(dt) {
@@ -527,8 +552,8 @@ function move(dt) {
   if (keys.KeyS || keys.ArrowDown) f -= 1;
   if (keys.KeyD) s += 1;
   if (keys.KeyA) s -= 1;
-  if (keys.ArrowLeft) P.yaw += 1.8 * dt;
-  if (keys.ArrowRight) P.yaw -= 1.8 * dt;
+  if (keys.ArrowLeft) P.ty += LOOK_SPEEDS[lookSpeed].key * dt;
+  if (keys.ArrowRight) P.ty -= LOOK_SPEEDS[lookSpeed].key * dt;
   f += -joy.y; s += joy.x;
   const mag = Math.hypot(f, s); if (mag > 1) { f /= mag; s /= mag; }
   if (!f && !s) return;
@@ -583,7 +608,8 @@ function setupControls() {
   el.addEventListener('pointermove', e => {
     if (!drag || drag.id !== e.pointerId) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
-    P.yaw += dx * 0.005; P.pitch = Math.max(-0.7, Math.min(0.7, P.pitch + dy * 0.004));
+    const sp = LOOK_SPEEDS[lookSpeed].drag;
+    P.ty += dx * sp; P.tp = Math.max(-0.6, Math.min(0.6, P.tp + dy * sp * 0.8));
   });
   el.addEventListener('pointerup', e => {
     if (!drag || drag.id !== e.pointerId) return;
@@ -598,6 +624,10 @@ function setupControls() {
   el.addEventListener('pointercancel', () => { drag = null; });
   // 화면 조이스틱 (태블릿)
   const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  const speedBtns = document.querySelectorAll('#speed button');
+  const markSpeed = () => speedBtns.forEach(b => b.classList.toggle('on', b.dataset.s === lookSpeed));
+  speedBtns.forEach(b => b.onclick = () => { lookSpeed = b.dataset.s; markSpeed(); try { window.localStorage.setItem('vg_look', lookSpeed); } catch (e) {} });
+  markSpeed();
   if (touch) { $('#joy').classList.remove('hidden'); $('#help').innerHTML = '왼쪽 원: 이동 &nbsp;|&nbsp; 화면 드래그: 둘러보기<br>작품 누르기: 크게 보기 / 바꾸기'; }
   const j = $('#joy'), kn = $('#knob'); let jid = null;
   const jset = (cx, cy) => {
@@ -632,7 +662,7 @@ function viewArt(f, i) {
     ${frameImg(f, 'm', 'class="bigimg"')}
     <div><b>${esc(f.artist)}</b> <span style="color:var(--muted)">${esc(f.date)}</span></div>
     ${f.desc ? `<p class="descbox">${esc(f.desc)}</p>` : ''}
-    <p class="note">${f.src === 'up' ? `${esc(S.view.name)} 학생이 직접 찾아서 올린 명화예요.` : '작품 이미지: 시카고 미술관(Art Institute of Chicago) 퍼블릭 도메인'}</p>
+    <p class="note">${f.src === 'up' ? `${esc(S.view.name)} 학생이 직접 찾아서 올린 명화예요.` : `작품 이미지: ${esc(f.src === 'ext' ? f.museum : '시카고 미술관')} 퍼블릭 도메인`}</p>
     ${isTeacher() ? '<div style="text-align:right"><button class="danger" id="hideBtn">이 작품 내리기</button></div>' : ''}`);
   if (isTeacher()) $('#hideBtn').onclick = () => hideWork(i);
 }
@@ -660,7 +690,7 @@ function openPicker(i) {
   const cur = S.g.frames[i];
   pk = { i, sel: cur ? Object.assign({}, cur) : null, items: [], tab: 'cat' };
   openModal(`<h3>명화 걸기 <small style="font-weight:400;color:var(--muted);font-size:15px">${i + 1}번 자리</small></h3>
-    <div class="tabs"><button data-t="cat">추천 명화</button><button data-t="search">미술관 검색 (영어)</button><button data-t="up">내가 찾은 명화 올리기</button></div>
+    <div class="tabs"><button data-t="cat">추천 명화</button><button data-t="search">미술관 3곳 검색 (영어)</button><button data-t="up">내가 찾은 명화 올리기</button></div>
     <div id="pkSearch" class="row hidden" style="max-width:560px"><input id="pkQ" placeholder="예: Monet, flower, cat, sea"><button class="primary" id="pkGo" style="flex:0 0 auto">검색</button></div>
     <div id="pkUp" class="upbox hidden"><b>인터넷에서 찾은 명화 그림 파일을 올려요.</b><br>
       작가가 세상을 떠난 지 70년이 지난 작품을 골라 주세요. (예: 김홍도, 신윤복, 고흐, 모네)<br>
@@ -691,7 +721,7 @@ function pickTab(t) {
   $('#pkUp').classList.toggle('hidden', t !== 'up');
   $('#pkGrid').innerHTML = ''; $('#pkMsg').textContent = '';
   if (t === 'cat') showCatalog();
-  else if (t === 'search') { $('#pkMsg').textContent = '영어로 화가 이름이나 그림 내용을 검색해요. 저작권 걱정 없는 작품만 나와요.'; $('#pkQ').focus(); }
+  else if (t === 'search') { $('#pkMsg').textContent = '시카고·클리블랜드·메트로폴리탄 미술관에서 저작권 걱정 없는 작품만 찾아요. 영어로 화가 이름이나 그림 내용을 검색해 보세요.'; $('#pkQ').focus(); }
 }
 async function showCatalog() {
   $('#pkMsg').textContent = '명화 목록을 불러오는 중…';
@@ -706,7 +736,7 @@ async function showCatalog() {
 async function doSearch() {
   const q = $('#pkQ').value.trim(); if (q.length < 2) { $('#pkMsg').textContent = '두 글자 이상 입력해 주세요.'; return; }
   if (/[ㄱ-힣]/.test(q)) { $('#pkMsg').textContent = '검색은 영어로 해 주세요. 예: 고흐 → van Gogh, 꽃 → flower'; return; }
-  $('#pkMsg').textContent = '찾는 중…'; $('#pkGrid').innerHTML = '';
+  $('#pkMsg').textContent = '미술관 3곳에서 찾는 중… (조금 걸릴 수 있어요)'; $('#pkGrid').innerHTML = '';
   try {
     const r = await api('GET', '/api/art/search?q=' + encodeURIComponent(q));
     if (!pk || pk.tab !== 'search') return;
@@ -716,11 +746,14 @@ async function doSearch() {
 }
 function renderGrid(items) {
   pk.items = items;
-  $('#pkGrid').innerHTML = items.map((a, k) => `<button class="card${pk.sel && pk.sel.imageId === a.imageId ? ' on' : ''}" data-k="${k}">
-    ${artImg(a.imageId, 's', 'loading="lazy"')}<div>${esc(a.title)}<br><small>${esc(a.artist)}</small></div></button>`).join('');
+  const same = a => pk.sel && (a.src === 'ext' ? pk.sel.img === a.img : pk.sel.imageId === a.imageId);
+  $('#pkGrid').innerHTML = items.map((a, k) => `<button class="card${same(a) ? ' on' : ''}" data-k="${k}">
+    ${a.src === 'ext' ? extImg(a.img, 'loading="lazy"') : artImg(a.imageId, 's', 'loading="lazy"')}<div>${esc(a.title)}<br><small>${esc(a.artist)}</small>${a.museum ? `<br><small class="mus">${esc(a.museum)}</small>` : ''}</div></button>`).join('');
   $('#pkGrid').querySelectorAll('.card').forEach(b => b.onclick = () => {
     const a = pk.items[+b.dataset.k];
-    pk.sel = { src: 'aic', id: a.id, imageId: a.imageId, title: a.title, artist: a.artist, date: a.date, desc: '' };
+    pk.sel = a.src === 'ext'
+      ? { src: 'ext', img: a.img, museum: a.museum, title: a.title, artist: a.artist, date: a.date, desc: '' }
+      : { src: 'aic', id: a.id, imageId: a.imageId, title: a.title, artist: a.artist, date: a.date, desc: '' };
     $('#pkGrid').querySelectorAll('.card').forEach(x => x.classList.toggle('on', x === b));
     renderSel(); $('#pkSel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
@@ -846,16 +879,29 @@ function openSettings(first) {
     <div class="layouts">${LAYOUT_ORDER.map(k => `<button data-l="${k}" class="${g.layout === k ? 'on' : ''}"><b>${LAYOUTS[k].name}</b>${LAYOUTS[k].desc}</button>`).join('')}</div>
     <div class="row"><div><label class="f">벽 색</label><div class="sw">${WALLS.map((w, i) => `<button data-w="${i}" title="${w.n}" style="background:${hex(w.c)}" class="${g.wall === i ? 'on' : ''}"></button>`).join('')}</div></div>
     <div><label class="f">바닥</label><div class="sw">${FLOORS.map((w, i) => `<button data-f="${i}" title="${w.n}" style="background:${hex(w.c)}" class="${g.floor === i ? 'on' : ''}"></button>`).join('')}</div></div></div>
-    <div style="margin-top:18px;text-align:right"><button class="primary" id="stOk">${first ? '전시관 들어가기' : '확인'}</button></div>`);
+    <div style="margin-top:18px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      ${first ? '<span></span>' : '<button class="danger" id="stReset">내 전시관 초기화</button>'}
+      <button class="primary" id="stOk">${first ? '전시관 들어가기' : '확인'}</button></div>`);
   const mb = $('#mbody');
   mb.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { g.layout = b.dataset.l; mb.querySelectorAll('[data-l]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); spawn(); });
   mb.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { g.wall = +b.dataset.w; mb.querySelectorAll('[data-w]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); });
   mb.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { g.floor = +b.dataset.f; mb.querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); });
+  if (!first) $('#stReset').onclick = resetMine;
   $('#stOk').onclick = () => {
     const n = $('#stName').value.trim(), it = $('#stIntro').value.trim();
     if (n !== g.galleryName || it !== g.intro) { g.galleryName = n; g.intro = it; markDirty(); }
     closeModal(); renderHud(); if (first) showBanner();
   };
+}
+
+/* ================= 초기화 ================= */
+async function resetMine() {
+  if (!confirm('내 전시관을 처음 상태로 되돌릴까요?\n걸어 둔 명화, 내 그림, 받은 감상평이 모두 지워지고 되돌릴 수 없어요.')) return;
+  try {
+    await api('POST', '/api/reset');
+    S.g = defaultG(); S.pending = null; S.pendingMeta = null; S.dirty = false;
+    buildScene(); spawn(); renderHud(); toast('초기화했어요. 처음부터 다시 꾸며 보세요.'); openSettings(true);
+  } catch (e) { toast(e.message); }
 }
 
 /* ================= 저장 ================= */
@@ -987,7 +1033,10 @@ async function openTeacher() {
         <td>${s.num}</td><td>${s.name ? esc(s.name) : '<span class="note">첫 로그인 때 입력</span>'}</td>
         <td class="pin">${s.pin || '-'}</td>
         <td><small>${s.saved ? `${s.galleryName ? '‘' + esc(s.galleryName) + '’ · ' : ''}명화 ${s.count}점 · 내 그림 ${s.hasPainting ? '있음' : '없음'}` : '아직 저장 안 함'}</small></td>
-        <td class="acts">${s.saved ? `<button data-v="${s.num}">구경</button>` : ''}<button data-n="${s.num}">이름</button><button class="danger" data-p="${s.num}">새 비밀번호</button></td></tr>`).join('')}</tbody></table>`
+        <td class="acts">${s.saved ? `<button data-v="${s.num}">구경</button>` : ''}<button data-n="${s.num}">이름</button><button class="danger" data-p="${s.num}">새 비밀번호</button>${s.saved ? `<button class="danger" data-r="${s.num}">초기화</button>` : ''}</td></tr>`).join('')}</tbody></table>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="danger" id="tcResetAll">반 전체 작품 초기화</button>
+        <button class="danger" id="tcResetYear">새 학년 준비 (이름·비밀번호까지 모두 지우기)</button></div>`
         : '<div class="note" style="margin-top:14px;font-size:15px">학생 수를 적고 <b>비밀번호 만들기</b>를 누르면 번호마다 숫자 4자리 비밀번호가 만들어져요. 그다음 <b>비밀번호 인쇄</b>로 잘라서 나눠 주세요.</div>'}`;
     const mb = $('#tcBody');
     $('#tcOpen').onclick = async () => { try { await api('POST', '/api/teacher/open', { open: !r.open }); toast(!r.open ? '전시를 열었어요.' : '전시를 닫았어요.'); openTeacher(); } catch (e) { toast(e.message); } };
@@ -1003,6 +1052,18 @@ async function openTeacher() {
       const nm = prompt(`${s.num}번 학생 이름`, s.name || ''); if (nm == null) return;
       try { await api('POST', '/api/teacher/name', { num: s.num, name: nm }); openTeacher(); } catch (e) { toast(e.message); }
     });
+    mb.querySelectorAll('[data-r]').forEach(b => b.onclick = async () => {
+      if (!confirm(`${b.dataset.r}번 학생의 전시관을 초기화할까요?\n명화, 내 그림, 감상평이 모두 지워져요. 이름과 비밀번호는 그대로예요.`)) return;
+      try { await api('POST', '/api/teacher/reset', { num: +b.dataset.r }); toast(`${b.dataset.r}번 전시관을 초기화했어요.`); openTeacher(); } catch (e) { toast(e.message); }
+    });
+    const resetAll = async roster => {
+      const cls = className(me.classId);
+      const msg = roster ? `${cls}의 모든 작품과 학생 이름·비밀번호를 지울까요?\n새 학년을 준비할 때만 쓰세요. 되돌릴 수 없어요.` : `${cls} 모든 학생의 전시관을 초기화할까요?\n이름과 비밀번호는 남고, 작품과 감상평은 모두 지워져요. 되돌릴 수 없어요.`;
+      if (!confirm(msg)) return;
+      if (prompt(`확인을 위해 "초기화"라고 적어 주세요.`) !== '초기화') { toast('취소했어요.'); return; }
+      try { await api('POST', '/api/teacher/reset', { all: true, roster }); toast('초기화했어요.'); S.view = null; S.g = defaultG(); buildScene(); spawn(); renderHud(); openTeacher(); } catch (e) { toast(e.message); }
+    };
+    if ($('#tcResetAll')) { $('#tcResetAll').onclick = () => resetAll(false); $('#tcResetYear').onclick = () => resetAll(true); }
     mb.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => {
       if (!confirm(`${b.dataset.p}번 학생의 비밀번호를 새로 만들까요?\n이전 비밀번호로는 더 이상 들어올 수 없어요. 작품은 그대로 남아요.`)) return;
       try { const x = await api('POST', '/api/teacher/resetpin', { num: +b.dataset.p }); toast(`${b.dataset.p}번 새 비밀번호: ${x.pin}`); openTeacher(); } catch (e) { toast(e.message); }

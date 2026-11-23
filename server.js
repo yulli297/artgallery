@@ -151,6 +151,18 @@ function setDocLater(col, id, delay = 4000) {
     setDoc(col, id, cache.get(k)).catch(e => console.error('[저장 실패]', k, e.message));
   }, delay));
 }
+function delDoc(col, id) {
+  const k = col + '/' + id;
+  cache.set(k, null);
+  if (pending.has(k)) { clearTimeout(pending.get(k)); pending.delete(k); }
+  const prev = writeChain.get(k) || Promise.resolve();
+  const next = prev.catch(() => {}).then(async () => {
+    if (fb) await fb.F.deleteDoc(fb.F.doc(fb.db, col, id));
+    else await fs.promises.unlink(path.join(DATA_DIR, col, encodeURIComponent(id) + '.json')).catch(() => {});
+  });
+  writeChain.set(k, next);
+  return next;
+}
 async function flushPending() {
   const jobs = [];
   for (const k of [...pending.keys()]) {
@@ -379,6 +391,10 @@ function cleanFrame(f, u) {
     if (!ownPath(u, f.path) || !validUrl(f.path, f.url)) return null;
     return Object.assign({ src: 'up', path: f.path, url: f.url }, info);
   }
+  if (f.src === 'ext') {
+    if (typeof f.img !== 'string' || f.img.length > 400 || !EXT_HOSTS.test(f.img)) return null;
+    return Object.assign({ src: 'ext', img: f.img, museum: str(f.museum, 20) }, info);
+  }
   if (!IMG_ID.test(f.imageId || '')) return null;
   return Object.assign({ src: 'aic', id: Number(f.id) || 0, imageId: f.imageId }, info);
 }
@@ -485,6 +501,28 @@ app.delete('/api/comments/:cid/:num/:at', auth, async (req, res) => {
   } catch (e) { err(res, e); }
 });
 
+// ================= 초기화 =================
+// 한 학생의 전시관(명화·내 그림·감상평·그림 파일)을 지움. 이름과 비밀번호는 남김
+async function resetStudent(cid, n, c) {
+  const id = gid(cid, n);
+  const g = await getDoc('galleries', id);
+  if (g) imgPaths(g).forEach(deleteImage);
+  await delDoc('galleries', id);
+  await delDoc('comments', id);
+  const s = c.students[n];
+  if (s) c.students[n] = { name: s.name || '' };
+}
+app.post('/api/reset', auth, async (req, res) => {
+  try {
+    const u = req.user;
+    if (u.r !== 's') return res.status(403).json({ error: '학생만 쓸 수 있어요.' });
+    const c = await getClass(u.c);
+    await resetStudent(u.c, u.n, c);
+    await setDoc('classes', u.c, c);
+    res.json({ ok: true });
+  } catch (e) { err(res, e); }
+});
+
 // ================= 교사 기능 =================
 function teacherOnly(req, res, next) { if (req.user.r !== 't') return res.status(403).json({ error: '선생님만 할 수 있어요.' }); next(); }
 app.post('/api/teacher/open', auth, teacherOnly, async (req, res) => {
@@ -522,6 +560,23 @@ app.post('/api/teacher/name', auth, teacherOnly, async (req, res) => {
     const c = await getClass(req.user.c);
     c.students[n] = Object.assign({}, c.students[n] || {}, { name: str((req.body || {}).name, 10) });
     await setDoc('classes', req.user.c, c);
+    res.json({ ok: true });
+  } catch (e) { err(res, e); }
+});
+// 학생 한 명 또는 반 전체 초기화 (roster: true면 이름·비밀번호까지 지워 새 학년 준비)
+app.post('/api/teacher/reset', auth, teacherOnly, async (req, res) => {
+  try {
+    const b = req.body || {}, cid = req.user.c;
+    const c = await getClass(cid);
+    if (b.all) {
+      const nums = new Set([...Object.keys(c.students), ...Object.keys(c.pins)].map(Number));
+      for (const n of nums) await resetStudent(cid, n, c);
+      if (b.roster) { c.students = {}; c.pins = {}; c.size = 0; }
+      c.open = false;
+    } else {
+      await resetStudent(cid, clampInt(b.num, 1, MAX_STUDENTS), c);
+    }
+    await setDoc('classes', cid, c);
     res.json({ ok: true });
   } catch (e) { err(res, e); }
 });
@@ -627,6 +682,44 @@ app.get('/api/art/catalog', auth, (req, res) => {
   res.json(catalog);
 });
 
+// ----- 미술관 3곳 통합 검색 (모두 인증 키 없이, 저작권 없는 작품만) -----
+// 시카고 미술관 + 클리블랜드 미술관(CC0) + 메트로폴리탄 미술관(퍼블릭 도메인)
+const EXT_HOSTS = /^https:\/\/(images\.metmuseum\.org|openaccess-cdn\.clevelandart\.org)\//;
+const getJson = async (url, ms = 10000) => {
+  const r = await fetch(url, { headers: AIC_HEADERS, signal: AbortSignal.timeout(ms) });
+  if (!r.ok) throw new Error(r.status + ' ' + url);
+  return r.json();
+};
+async function cmaSearch(q) {
+  const j = await getJson('https://openaccess-api.clevelandart.org/api/artworks/?q=' + encodeURIComponent(q) + '&cc0&has_image=1&limit=24');
+  return (j.data || []).map(a => {
+    const img = a.images && a.images.web && a.images.web.url;
+    if (!img || !EXT_HOSTS.test(img)) return null;
+    const cr = (a.creators && a.creators[0] && a.creators[0].description) || '';
+    return { src: 'ext', museum: '클리블랜드 미술관', img, title: a.title || '제목 없음', artist: cr.split(' (')[0] || '작가 미상', date: a.creation_date || '' };
+  }).filter(Boolean);
+}
+async function metSearch(q) {
+  let ids = [];
+  try { ids = (await getJson('https://collectionapi.metmuseum.org/public/collection/v1.1/search?hasImages=true&limit=60&q=' + encodeURIComponent(q))).objectIDs || []; }
+  catch (e) { ids = (await getJson('https://collectionapi.metmuseum.org/public/collection/v1/search?hasImages=true&q=' + encodeURIComponent(q))).objectIDs || []; }
+  ids = ids.slice(0, 30);
+  const out = [];
+  for (let i = 0; i < ids.length && out.length < 16; i += 6) { // 6개씩 나눠서 요청 (미술관 서버 배려)
+    const objs = await Promise.allSettled(ids.slice(i, i + 6).map(id => getJson('https://collectionapi.metmuseum.org/public/collection/v1/objects/' + id, 8000)));
+    for (const o of objs) {
+      const a = o.status === 'fulfilled' ? o.value : null;
+      if (!a || !a.isPublicDomain || !a.primaryImageSmall || !EXT_HOSTS.test(a.primaryImageSmall)) continue;
+      out.push({ src: 'ext', museum: '메트로폴리탄 미술관', img: a.primaryImageSmall, title: a.title || '제목 없음', artist: a.artistDisplayName || '작가 미상', date: a.objectDate || '' });
+    }
+  }
+  return out;
+}
+async function aicItems(q) {
+  return (await aicSearch(q, 40)).slice(0, 20).map(a => ({
+    src: 'aic', museum: '시카고 미술관', id: a.id, imageId: a.image_id, title: a.title, artist: a.artist_title || '작가 미상', date: a.date_display || ''
+  }));
+}
 const searchCache = new Map();
 app.get('/api/art/search', auth, async (req, res) => {
   try {
@@ -634,9 +727,13 @@ app.get('/api/art/search', auth, async (req, res) => {
     if (q.length < 2) return res.json({ items: [] });
     const k = q.toLowerCase();
     if (searchCache.has(k)) return res.json({ items: searchCache.get(k) });
-    const items = (await aicSearch(q, 40)).slice(0, 24).map(a => ({
-      id: a.id, imageId: a.image_id, title: a.title, artist: a.artist_title || '작가 미상', date: a.date_display || ''
-    }));
+    const lists = await Promise.allSettled([aicItems(q), cmaSearch(q), metSearch(q)]);
+    lists.forEach((l, i) => { if (l.status === 'rejected') console.warn('[명화 검색] 실패:', ['시카고', '클리블랜드', '메트로폴리탄'][i], l.reason && l.reason.message); });
+    const ok = lists.filter(l => l.status === 'fulfilled').map(l => l.value);
+    if (!ok.length) throw new Error('all failed');
+    // 세 미술관 결과를 번갈아 섞기
+    const items = [];
+    for (let i = 0; items.length < 60 && ok.some(l => l[i]); i++) ok.forEach(l => { if (l[i]) items.push(l[i]); });
     searchCache.set(k, items);
     if (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value);
     res.json({ items });
@@ -644,6 +741,35 @@ app.get('/api/art/search', auth, async (req, res) => {
     console.warn('[명화 검색] 실패', e.message);
     res.status(502).json({ error: '명화 검색이 잠시 안 돼요. 추천 명화에서 고르거나 직접 올려 주세요.' });
   }
+});
+
+// 클리블랜드·메트로폴리탄 그림을 학교망에서 바로 못 받을 때만 서버가 대신 받아 줌 (두 미술관 주소만 허용)
+const extCache = new Map(), extInflight = new Map();
+app.get('/api/ext', async (req, res) => {
+  try {
+    const u = String(req.query.u || '');
+    if (!EXT_HOSTS.test(u) || u.length > 400) return res.status(400).end();
+    let buf = extCache.get(u);
+    if (!buf) {
+      let job = extInflight.get(u);
+      if (!job) {
+        job = (async () => {
+          const r = await fetch(u, { signal: AbortSignal.timeout(15000) });
+          if (!r.ok) return null;
+          const b = Buffer.from(await r.arrayBuffer());
+          if (b.length > 6e6) return null;
+          extCache.set(u, b);
+          if (extCache.size > 150) extCache.delete(extCache.keys().next().value);
+          return b;
+        })().finally(() => extInflight.delete(u));
+        extInflight.set(u, job);
+      }
+      buf = await job;
+      if (!buf) return res.status(404).end();
+    }
+    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=604800, immutable' });
+    res.send(buf);
+  } catch (e) { res.status(502).end(); }
 });
 
 // 미술관 그림을 학교망에서 바로 못 받을 때만 서버가 대신 받아 줌 (같은 그림은 한 번만 받아서 나눠 줌)
