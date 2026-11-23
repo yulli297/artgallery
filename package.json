@@ -1,0 +1,18 @@
+{
+  "name": "class-virtual-gallery",
+  "version": "1.0.0",
+  "description": "우리 반 가상 미술관 - 걸어다니며 명화와 내 그림을 전시하는 3D 전시관",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "compression": "^1.7.4",
+    "express": "^4.19.2",
+    "firebase-admin": "^12.1.0",
+    "three": "0.149.0"
+  }
+}

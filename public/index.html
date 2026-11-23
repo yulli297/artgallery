@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>우리 반 가상 미술관</title>
+<style>
+:root{--bg:#f4efe6;--ink:#2b2622;--muted:#6f655b;--line:#d9cfc0;--card:#fffdf9;--accent:#8a5a2b;--accent2:#1d7a62;--danger:#a33a2c}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:8px 14px}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.green{background:var(--accent2);border-color:var(--accent2);color:#fff}
+button.ghost{background:transparent}
+button.danger{color:var(--danger);border-color:#e2b8b0}
+button:disabled{opacity:.5;cursor:default}
+input,textarea,select{font:inherit;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:#fff;color:var(--ink);width:100%}
+textarea{resize:vertical;min-height:64px}
+label.f{display:block;font-size:14px;color:var(--muted);margin:12px 0 6px}
+.hidden{display:none!important}
+.screen{position:fixed;inset:0}
+/* 로그인 */
+#login{display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,#fbf6ec,#efe5d4)}
+.lbox{width:min(560px,92vw);background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px 32px;box-shadow:0 12px 40px rgba(80,60,30,.12)}
+.lbox h1{margin:0 0 4px;font-size:28px;letter-spacing:-.5px}
+.lbox .sub{color:var(--muted);margin:0 0 18px;font-size:15px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{flex:1;padding:9px}
+.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.classes{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px}
+.classes button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+.msg{min-height:22px;color:var(--danger);font-size:14px;margin-top:10px}
+.note{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5}
+/* 앱 */
+#view{position:absolute;inset:0;touch-action:none}
+#view canvas{display:block}
+.hud-top{position:absolute;left:12px;right:12px;top:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;pointer-events:none}
+.hud-top>*{pointer-events:auto}
+.titlebox{background:rgba(255,253,249,.92);border:1px solid var(--line);border-radius:12px;padding:8px 14px;max-width:46vw}
+.titlebox b{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titlebox span{font-size:13px;color:var(--muted)}
+.badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:20px;background:#efe3cf;color:#6b4520;margin-left:6px;vertical-align:middle}
+.badge.v{background:#d9efe7;color:#145c49}
+.btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.btns button{background:rgba(255,253,249,.94);padding:8px 12px;font-size:15px}
+.btns button.primary{background:var(--accent);color:#fff}
+.btns button.dirty::after{content:" ●";color:#ffd27a}
+#cross{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;pointer-events:none;opacity:.6}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 2px #000}
+#cross:before{left:6px;top:0;width:2px;height:14px}#cross:after{top:6px;left:0;height:2px;width:14px}
+#aim{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:rgba(43,38,34,.82);color:#fff;padding:8px 16px;border-radius:20px;font-size:15px;pointer-events:none;max-width:70vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#help{position:absolute;right:12px;bottom:14px;font-size:12px;color:#fff;background:rgba(43,38,34,.55);padding:6px 10px;border-radius:8px;pointer-events:none;line-height:1.5;text-align:right}
+#joy{position:absolute;left:24px;bottom:24px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.55);touch-action:none}
+#knob{position:absolute;left:41px;top:41px;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.8);box-shadow:0 2px 6px rgba(0,0,0,.25)}
+#banner{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);text-align:center;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.6);pointer-events:none;transition:opacity 1s}
+#banner h2{font-size:34px;margin:0 0 8px}#banner p{margin:0;font-size:17px}
+/* 모달 */
+#modal{position:fixed;inset:0;background:rgba(30,24,18,.5);display:flex;align-items:center;justify-content:center;z-index:20}
+#modal .box{position:relative;width:min(900px,94vw);max-height:90vh;overflow:auto;background:var(--card);border-radius:18px;padding:22px 26px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+#modal .box.narrow{width:min(520px,94vw)}
+#modal .x{position:absolute;right:14px;top:12px;border:none;background:none;font-size:26px;padding:2px 8px;color:var(--muted)}
+#modal h3{margin:0 0 12px;font-size:21px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-top:10px}
+.card{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;cursor:pointer;text-align:left;padding:0}
+.card img{display:block;width:100%;height:100px;object-fit:cover;background:#eee}
+.card div{padding:6px 8px;font-size:13px;line-height:1.35}
+.card small{color:var(--muted)}
+.card.on{outline:3px solid var(--accent)}
+.sel{display:flex;gap:16px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line);align-items:flex-start}
+.sel img{width:220px;max-height:200px;object-fit:contain;background:#f3efe8;border-radius:10px}
+.sel .info{flex:1}
+.bigimg{display:block;max-width:100%;max-height:58vh;margin:0 auto 12px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15)}
+.layouts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.layouts button{text-align:left;padding:10px;font-size:14px;line-height:1.4}
+.layouts button b{display:block;font-size:15px;margin-bottom:2px}
+.layouts button.on{border:2px solid var(--accent);background:#fbf3e6}
+.sw{display:flex;gap:8px;flex-wrap:wrap}
+.sw button{width:44px;height:44px;border-radius:50%;padding:0;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.sw button.on{box-shadow:0 0 0 3px var(--accent)}
+.list{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.item{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}
+.item .t{flex:1;line-height:1.4}
+.item .t small{color:var(--muted)}
+.comments{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.cm{padding:8px 0;border-bottom:1px dashed var(--line);display:flex;gap:8px;align-items:flex-start}
+.cm .t{flex:1}.cm b{font-size:14px}.cm button{padding:2px 8px;font-size:12px}
+.switch{display:flex;align-items:center;gap:10px;font-size:16px}
+.warn{background:#fdf1e2;border:1px solid #efc98f;color:#7a4b12;padding:10px 12px;border-radius:10px;font-size:14px;line-height:1.5;margin-bottom:10px}
+#toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:20px;z-index:30;font-size:15px;opacity:0;transition:opacity .3s;pointer-events:none}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;background:rgba(30,24,18,.35);pointer-events:none}
+.descbox{background:#f6efe3;padding:10px 12px;border-radius:10px;margin-top:10px;line-height:1.6}
+.upbox{background:#f6efe3;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.6;margin-bottom:6px}
+.tcbar{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.tcbar input{padding:7px 10px}
+table.tc{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
+table.tc th{text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);padding:6px}
+table.tc td{border-bottom:1px solid #eee5d8;padding:6px;vertical-align:middle}
+table.tc td.pin{font-family:Consolas,monospace;font-size:18px;letter-spacing:2px;font-weight:600}
+table.tc td.acts{text-align:right;white-space:nowrap}
+table.tc td.acts button{padding:4px 9px;font-size:13px;margin-left:4px}
+.tabs button{white-space:nowrap}
+@media (max-width:820px){.layouts{grid-template-columns:repeat(2,1fr)}.sel{flex-direction:column}.sel img{width:100%}}
+</style>
+</head>
+<body>
+
+<!-- ===== 로그인 화면 ===== -->
+<div id="login" class="screen">
+  <div class="lbox">
+    <h1>우리 반 가상 미술관</h1>
+    <p class="sub">명화 10점과 내 그림으로 나만의 전시관을 꾸며 보세요.</p>
+    <div class="tabs"><button id="tabS" class="on">학생</button><button id="tabT">선생님</button></div>
+    <label class="f">반</label>
+    <div class="classes" id="classBtns"></div>
+    <div id="formS">
+      <div class="row">
+        <div><label class="f">번호</label><select id="lgNum"></select></div>
+        <div><label class="f">비밀번호 (숫자 4자리)</label><input id="lgPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+      </div>
+      <div id="newBox" class="hidden">
+        <div class="note" style="color:var(--accent2)">처음 들어왔어요! 내 이름을 적고 다시 입장하기를 눌러 주세요.</div>
+        <label class="f">이름</label><input id="lgName" maxlength="10">
+      </div>
+      <div class="note">비밀번호는 선생님께 받은 종이에 적혀 있어요.</div>
+      <button class="primary" id="lgGo" style="width:100%;margin-top:12px;padding:12px">입장하기</button>
+    </div>
+    <div id="formT" class="hidden">
+      <label class="f">교사 비밀번호</label><input id="lgTpw" type="password" autocomplete="off">
+      <button class="primary" id="lgTGo" style="width:100%;margin-top:16px;padding:12px">선생님으로 입장</button>
+    </div>
+    <div class="msg" id="lgMsg"></div>
+  </div>
+</div>
+
+<!-- ===== 전시관 화면 ===== -->
+<div id="app" class="screen hidden">
+  <div id="view"></div>
+  <div id="cross"></div>
+  <div class="hud-top">
+    <div class="titlebox"><b id="hTitle"></b><span id="hSub"></span></div>
+    <div class="btns" id="hBtns"></div>
+  </div>
+  <div id="aim" class="hidden"></div>
+  <div id="help">WASD·방향키: 이동 &nbsp;|&nbsp; 드래그: 둘러보기<br>작품 누르기: 크게 보기 / 바꾸기</div>
+  <div id="joy" class="hidden"><div id="knob"></div></div>
+  <div id="banner" style="opacity:0"><h2 id="bnT"></h2><p id="bnP"></p></div>
+  <div id="loading" class="hidden">불러오는 중…</div>
+</div>
+
+<div id="modal" class="hidden"><div class="box" id="mbox"><button class="x" id="mx" aria-label="닫기">×</button><div id="mbody"></div></div></div>
+<div id="toast"></div>
+
+<script src="/vendor/three.min.js"></script>
+<script>
+'use strict';
+/* ================= 기본 도우미 ================= */
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const S = { token: null, me: null, cfg: null, catalog: null, view: null, g: null, dirty: false, pending: null, pendingMeta: null, classSel: null };
+let store = null; try { store = window.localStorage; } catch (e) { store = null; }
+function saveSess() { try { store && store.setItem('vg_sess', JSON.stringify({ token: S.token, me: S.me })); } catch (e) {} }
+function loadSess() { try { return JSON.parse(store && store.getItem('vg_sess')); } catch (e) { return null; } }
+function clearSess() { try { store && store.removeItem('vg_sess'); } catch (e) {} }
+
+async function api(method, url, body) {
+  const headers = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  if (S.token) headers.Authorization = 'Bearer ' + S.token;
+  let r;
+  try { r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined }); }
+  catch (e) { throw new Error('서버에 연결할 수 없어요. 인터넷을 확인해 주세요.'); }
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (r.status === 401 && S.token) { logout(true); throw new Error(j.error || '다시 로그인해 주세요.'); }
+  if (!r.ok) throw new Error(j.error || '문제가 생겼어요.');
+  return j;
+}
+let toastT;
+function toast(m) { const t = $('#toast'); t.textContent = m; t.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => t.style.opacity = 0, 2600); }
+function loading(on) { $('#loading').classList.toggle('hidden', !on); }
+
+/* ================= 전시관 구조 (방마다 명화 10점 + 내 그림 1점) =================
+   벽: [x1,z1,x2,z2, 안쪽방향x,z, 명화 개수, 벽 없음(1), 두께]  */
+const R8 = 7;
+function octLayout() {
+  const walls = [], cnt = [2, 0, 2, 2, 1, 'S', 1, 2]; let door = null;
+  for (let i = 0; i < 8; i++) {
+    const a1 = (22.5 + 45 * i) * Math.PI / 180, a2 = (22.5 + 45 * (i + 1)) * Math.PI / 180;
+    const x1 = R8 * Math.cos(a1), z1 = R8 * Math.sin(a1), x2 = R8 * Math.cos(a2), z2 = R8 * Math.sin(a2);
+    const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2, ml = Math.hypot(mx, mz), nx = -mx / ml, nz = -mz / ml;
+    if (i === 1) {
+      const f = 0.36, ax = x1 + (x2 - x1) * f, az = z1 + (z2 - z1) * f, bx = x2 + (x1 - x2) * f, bz = z2 + (z1 - z2) * f;
+      walls.push([x1, z1, ax, az, nx, nz, 0]); walls.push([bx, bz, x2, z2, nx, nz, 0]); door = [ax, az, bx, bz];
+    } else walls.push([x1, z1, x2, z2, nx, nz, cnt[i] === 'S' ? 0 : cnt[i]]);
+  }
+  const zf = R8 * Math.cos(Math.PI / 8);
+  return { name: '팔각 홀', desc: '둥근 방 가운데 의자에 앉아 빙 둘러보는 구조. 입구 정면에 내 그림.', oct: true, walls, door,
+    stu: [0, -zf, 0, 1], eye: [0, zf - 1.3], look: [0, -6], benches: [], round: true, mats: [[0, zf + 0.6, 0]] };
+}
+const LAYOUTS = {
+  corridor: { name: '긴 복도형', desc: '양쪽 벽의 명화를 지나 걸어가면 끝 벽에 내 그림이 기다려요.',
+    floors: [[0, 0, 6, 24]],
+    walls: [[0, 0, 6, 0, 0, 1, 0], [0, 0, 0, 24, 1, 0, 5], [6, 0, 6, 24, -1, 0, 5], [0, 24, 2, 24, 0, -1, 0], [4, 24, 6, 24, 0, -1, 0]],
+    door: [2, 24, 4, 24], stu: [3, 0, 0, 1], eye: [3, 22.6], look: [3, 0], benches: [[3, 8, 1], [3, 16, 1]], mats: [[3, 24.6, 0]] },
+  ell: { name: 'ㄱ자 2개 방', desc: '첫 방은 명화관, 꺾어 들어간 두 번째 방 끝 벽에 내 그림.',
+    floors: [[0, 0, 14, 10], [4, 10, 14, 24]],
+    walls: [[0, 0, 14, 0, 0, 1, 2], [0, 0, 0, 3.5, 1, 0, 0], [0, 6.5, 0, 10, 1, 0, 0], [0, 10, 8, 10, 0, -1, 1], [11, 10, 14, 10, 0, -1, 0],
+      [14, 0, 14, 10, -1, 0, 1], [14, 10, 14, 24, -1, 0, 3], [4, 10, 4, 24, 1, 0, 3], [4, 24, 14, 24, 0, -1, 0]],
+    door: [0, 3.5, 0, 6.5], stu: [9, 24, 0, -1], eye: [1.2, 5], look: [14, 5], benches: [[7.5, 5, 1], [9, 17, 0]], mats: [[-0.6, 5, 1]] },
+  oct: octLayout(),
+  partition: { name: '가벽 전시실', desc: '방 가운데 가벽을 돌아가면 뒷면에서 내 그림이 나타나요.',
+    floors: [[0, 0, 12, 14]],
+    walls: [[0, 0, 12, 0, 0, 1, 2], [0, 0, 0, 14, 1, 0, 3], [12, 0, 12, 14, -1, 0, 3], [0, 14, 4.5, 14, 0, -1, 0], [7.5, 14, 12, 14, 0, -1, 0],
+      [3.5, 6, 8.5, 6, 0, 1, 2, 0, 0.3], [3.5, 6, 8.5, 6, 0, -1, 0, 1, 0.3]],
+    door: [4.5, 14, 7.5, 14], stu: [6, 6, 0, -1, 0.3], eye: [6, 12.8], look: [6, 6], benches: [[6, 2.6, 0], [6, 10, 0]], mats: [[6, 14.6, 0]] }
+};
+const LAYOUT_ORDER = ['corridor', 'ell', 'oct', 'partition'];
+const WALLS = [{ c: 0xf6f3ec, n: '흰색' }, { c: 0xd8d6d0, n: '연회색' }, { c: 0x2f3e5c, n: '남색' }, { c: 0x6e2b35, n: '버건디' }, { c: 0x5f6b4e, n: '올리브' }];
+const FLOORS = [{ c: 0xb98b5e, n: '밝은 원목' }, { c: 0x6e4b32, n: '진한 원목' }, { c: 0x9a9890, n: '회색 돌' }];
+const hex = c => '#' + c.toString(16).padStart(6, '0');
+const defaultG = () => ({ layout: 'ell', wall: 0, floor: 0, galleryName: '', intro: '', frames: Array(10).fill(null), painting: null });
+
+/* ================= 3D 장면 ================= */
+let renderer, scene, camera, world = null, slots = [], colWalls = [], colBoxes = [], colCircles = [];
+const texCache = new Map();
+let needRender = true;
+const invalidate = () => { needRender = true; };
+const P = { x: 0, z: 0, yaw: 0, pitch: 0 };
+const keys = {};
+const joy = { x: 0, y: 0 };
+const EYE = 1.6, RAD = 0.35;
+
+function init3D() {
+  if (renderer) return;
+  const el = $('#view');
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setSize(el.clientWidth, el.clientHeight);
+  el.appendChild(renderer.domElement);
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x2b2622);
+  camera = new THREE.PerspectiveCamera(65, el.clientWidth / el.clientHeight, 0.05, 100);
+  camera.rotation.order = 'YXZ';
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x7a6e60, 0.62));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.3); dl.position.set(4, 10, 6); scene.add(dl);
+  window.addEventListener('resize', () => {
+    renderer.setSize(el.clientWidth, el.clientHeight);
+    camera.aspect = el.clientWidth / el.clientHeight; camera.updateProjectionMatrix(); invalidate();
+  });
+  setupControls();
+  let last = performance.now(), aimT = 0, lastKey = '';
+  (function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (S.view) { move(dt); aimT += dt; if (aimT > 0.2) { aimT = 0; updateAim(); } }
+    // 움직이거나 그림이 바뀔 때만 다시 그림 (가만히 있을 때 태블릿 발열·배터리 절약)
+    const key = P.x.toFixed(3) + ',' + P.z.toFixed(3) + ',' + P.yaw.toFixed(4) + ',' + P.pitch.toFixed(4);
+    if (needRender || key !== lastKey) {
+      camera.position.set(P.x, EYE, P.z); camera.rotation.set(P.pitch, P.yaw, 0);
+      renderer.render(scene, camera); lastKey = key; needRender = false;
+    }
+    requestAnimationFrame(loop);
+  })(last);
+}
+
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+}
+let phM = null, phS = null;
+function placeholderTex(stu) {
+  if (stu && phS) return phS; if (!stu && phM) return phM;
+  const t = canvasTex(320, 240, (g, w, h) => {
+    g.fillStyle = stu ? '#fbf7ee' : '#f2efe9'; g.fillRect(0, 0, w, h);
+    g.setLineDash([12, 8]); g.lineWidth = 4; g.strokeStyle = stu ? '#c9a24a' : '#b5aa99'; g.strokeRect(14, 14, w - 28, h - 28); g.setLineDash([]);
+    g.fillStyle = stu ? '#8a6a1f' : '#7d7264'; g.textAlign = 'center';
+    g.font = '500 64px sans-serif'; g.fillText('+', w / 2, 112);
+    g.font = '500 30px sans-serif'; g.fillText(stu ? '내 그림 걸기' : '명화 걸기', w / 2, 170);
+  });
+  if (stu) phS = t; else phM = t; return t;
+}
+// 한 글자씩 재서 줄 바꾸기 (한글용)
+function wrapText(g, text, maxW) {
+  const out = []; let line = '';
+  for (const ch of String(text)) {
+    if (ch === '\n') { out.push(line); line = ''; continue; }
+    const t = line + ch;
+    if (g.measureText(t).width > maxW && line) { out.push(line); line = ch === ' ' ? '' : ch; } else line = t;
+  }
+  if (line) out.push(line);
+  return out;
+}
+// 작품 소개판: 제목 / 작가·연도 / 간단한 설명 (wide: 액자 아래에 붙는 가로형)
+function placardTex(title, sub, desc, stu, wide) {
+  const W = wide ? 900 : 600, Hh = wide ? 300 : 420;
+  return canvasTex(W, Hh, (g, w, h) => {
+    g.fillStyle = stu ? '#eef6f2' : '#fbfaf6'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = stu ? '#9cc9b8' : '#d9cfc0'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4);
+    g.textAlign = 'left'; g.textBaseline = 'top';
+    const pad = 28; let y = pad;
+    const fit = (s, font) => { g.font = font; let t = s; while (g.measureText(t).width > w - pad * 2 && t.length > 1) t = t.slice(0, -1); return t === s ? t : t + '…'; };
+    g.fillStyle = '#2b2622'; g.fillText(fit(title || '제목 없음', '700 50px sans-serif'), pad, y); y += 66;
+    if (sub) { g.fillStyle = '#6f655b'; g.fillText(fit(sub, '400 34px sans-serif'), pad, y); y += 50; }
+    if (desc) {
+      y += 4; g.fillStyle = '#3d3630'; g.font = '400 33px sans-serif';
+      const lines = wrapText(g, desc, w - pad * 2), max = Math.max(1, Math.floor((h - y - pad + 8) / 44));
+      lines.slice(0, max).forEach((l, i) => { g.fillText(i === max - 1 && lines.length > max ? l.slice(0, -1) + '…' : l, pad, y); y += 44; });
+    }
+  });
+}
+
+function disposeWorld() {
+  if (!world) return;
+  world.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) {
+      const m = o.material;
+      if (m.map && m.map.userData.temp) m.map.dispose();
+      m.dispose();
+    }
+  });
+  scene.remove(world); world = null;
+}
+
+function buildScene() {
+  disposeWorld();
+  const g = S.g, L = LAYOUTS[g.layout] || LAYOUTS.ell;
+  world = new THREE.Group(); scene.add(world);
+  slots = []; colWalls = []; colBoxes = []; colCircles = [];
+  const wallM = new THREE.MeshLambertMaterial({ color: WALLS[g.wall] ? WALLS[g.wall].c : WALLS[0].c });
+  const floorM = new THREE.MeshLambertMaterial({ color: FLOORS[g.floor] ? FLOORS[g.floor].c : FLOORS[0].c });
+  const ceilM = new THREE.MeshLambertMaterial({ color: 0xf2efe8, side: THREE.DoubleSide });
+  const darkM = new THREE.MeshLambertMaterial({ color: 0x3a2e22 }), goldM = new THREE.MeshLambertMaterial({ color: 0xc9a24a });
+  const benchM = new THREE.MeshLambertMaterial({ color: 0x5b4636 }), matM = new THREE.MeshLambertMaterial({ color: 0x7a2e2e });
+  const H = 2.9;
+  // 바닥, 천장
+  if (L.oct) {
+    const f = new THREE.Mesh(new THREE.CylinderGeometry(R8, R8, 0.1, 8, 1, false, Math.PI / 8), floorM); f.position.y = -0.05; world.add(f);
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(R8, R8, 0.1, 8, 1, false, Math.PI / 8), ceilM); c.position.y = H + 0.05; world.add(c);
+  } else L.floors.forEach(r => {
+    const w = r[2] - r[0], d = r[3] - r[1];
+    const f = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), floorM); f.position.set(r[0] + w / 2, -0.05, r[1] + d / 2); world.add(f);
+    const c = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), ceilM); c.position.set(r[0] + w / 2, H + 0.05, r[1] + d / 2); world.add(c);
+  });
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshLambertMaterial({ color: 0x8c8478 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = -0.11; world.add(ground);
+  // 벽 + 명화 자리
+  let mi = 0;
+  L.walls.forEach(w => {
+    const [x1, z1, x2, z2, nx, nz, n, noWall, th] = w;
+    const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz), t0 = th || 0.2;
+    if (!noWall) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(len + (L.oct ? 0.15 : 0.2), H, t0), wallM);
+      m.position.set((x1 + x2) / 2, H / 2, (z1 + z2) / 2); m.rotation.y = Math.atan2(-dz, dx); world.add(m);
+      colWalls.push([x1, z1, x2, z2, t0 / 2]);
+    }
+    const off = t0 / 2 + 0.04;
+    // 벽에 여유가 있으면 소개판을 액자 옆에, 좁으면 액자 아래에 붙임. 액자는 남는 공간만큼 최대한 크게
+    const gap = len / (n + 1), side = gap >= 2.6;
+    for (let k = 1; k <= n; k++) {
+      const t = k / (n + 1);
+      addSlot({ type: 'm', index: mi++, x: x1 + dx * t + nx * off, z: z1 + dz * t + nz * off, nx, nz,
+        maxW: Math.min(1.6, side ? gap - 1.15 : gap - 0.35), maxH: 1.4, y: 1.6, frameM: darkM,
+        side, pw: side ? 0.6 : 0.9, ph: side ? 0.42 : 0.3 });
+    }
+  });
+  // 내 그림 자리 (소개판은 항상 옆에)
+  const [sx, sz, snx, snz, sth] = L.stu, soff = (sth || 0.2) / 2 + 0.05;
+  addSlot({ type: 's', index: 0, x: sx + snx * soff, z: sz + snz * soff, nx: snx, nz: snz, maxW: 2.2, maxH: 1.8, y: 1.65, frameM: goldM, side: true, pw: 0.8, ph: 0.56 });
+  const lt = new THREE.PointLight(0xffe7b0, 0.8, 5.5); lt.position.set(sx + snx * 1.5, 2.6, sz + snz * 1.5); world.add(lt);
+  const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 0.18, 10), darkM); cone.position.set(sx + snx * 0.5, 2.78, sz + snz * 0.5); world.add(cone);
+  // 의자, 입구 매트
+  L.benches.forEach(b => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(2, 0.45, 0.6), benchM); m.position.set(b[0], 0.225, b[1]); m.rotation.y = b[2] ? Math.PI / 2 : 0; world.add(m);
+    colBoxes.push(b[2] ? [b[0] - 0.3, b[1] - 1, b[0] + 0.3, b[1] + 1] : [b[0] - 1, b[1] - 0.3, b[0] + 1, b[1] + 0.3]);
+  });
+  if (L.round) { const m = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.45, 24), benchM); m.position.y = 0.225; world.add(m); colCircles.push([0, 0, 1.3]); }
+  L.mats.forEach(mt => { const m = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.02, 1.2), matM); m.position.set(mt[0], 0.01, mt[1]); m.rotation.y = mt[2] ? Math.PI / 2 : 0; world.add(m); });
+  if (L.door) colWalls.push([...L.door, 0.05]); // 입구 밖으로 나가지 않게
+  // 내용 채우기
+  slots.forEach(applySlot);
+}
+
+function addSlot(o) {
+  const grp = new THREE.Group();
+  grp.position.set(o.x, o.y, o.z); grp.rotation.y = Math.atan2(o.nx, o.nz);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.06), o.frameM);
+  const art = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  art.position.z = 0.032;
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  plate.position.z = 0.01;
+  grp.add(frame, art, plate);
+  world.add(grp);
+  const slot = Object.assign(o, { grp, frame, art, plate });
+  frame.userData.slot = art.userData.slot = plate.userData.slot = slot;
+  slots.push(slot);
+}
+function setSize(slot, aspect) {
+  let w = slot.maxW, h = w / aspect;
+  if (h > slot.maxH) { h = slot.maxH; w = h * aspect; }
+  const b = slot.type === 's' ? 0.16 : 0.12, pw = slot.pw, ph = slot.ph;
+  slot.frame.scale.set(w + b, h + b, 1);
+  slot.art.scale.set(w, h, 1);
+  slot.plate.scale.set(pw, ph, 1);
+  if (slot.side) {
+    // 액자 + 소개판을 한 묶음으로 가운데 정렬, 소개판은 액자 오른쪽 아래
+    const gap = 0.15, total = w + b + gap + pw, fx = -total / 2 + (w + b) / 2;
+    slot.frame.position.x = slot.art.position.x = fx;
+    slot.plate.position.x = total / 2 - pw / 2;
+    slot.plate.position.y = Math.min(0, -h / 2 + ph / 2);
+  } else {
+    slot.frame.position.x = slot.art.position.x = slot.plate.position.x = 0;
+    slot.plate.position.y = -h / 2 - b / 2 - ph / 2 - 0.08;
+  }
+  invalidate();
+}
+function setArtTex(slot, tex) {
+  slot.art.material.map = tex; slot.art.material.needsUpdate = true;
+  const img = tex.image; setSize(slot, img && img.width ? img.width / img.height : 4 / 3);
+  invalidate();
+}
+function setPlate(slot, title, sub, desc) {
+  invalidate();
+  const old = slot.plate.material.map; if (old) old.dispose();
+  slot.plate.material.map = null;
+  if (title == null) { slot.plate.visible = false; return; }
+  const t = placardTex(title, sub, desc, slot.type === 's', !slot.side); t.userData.temp = true;
+  slot.plate.material.map = t; slot.plate.material.needsUpdate = true; slot.plate.visible = true;
+}
+function loadTex(url, cb, keep, onErr) {
+  if (keep && texCache.has(url)) { const t = texCache.get(url); if (t.image) cb(t); else t.userData.cbs.push(cb); return; }
+  const t = new THREE.TextureLoader().load(url, tt => { (tt.userData.cbs || []).forEach(f => f(tt)); tt.userData.cbs = []; }, undefined,
+    () => { texCache.delete(url); if (onErr) onErr(); else toast('그림을 불러오지 못했어요.'); });
+  t.anisotropy = 4; t.userData.cbs = [cb];
+  if (keep) texCache.set(url, t); else t.userData.temp = true;
+}
+/* 명화 이미지: 학교망에서 미술관 사이트가 바로 열리면 기기가 직접 받고(서버 부담 0),
+   막혀 있으면 자동으로 서버를 거쳐 받음 */
+let artMode = null, artProbe = null;
+const AIC_IMG = (id, size) => `https://www.artic.edu/iiif/2/${id}/full/${size === 's' ? '200,' : '843,'}/0/default.jpg`;
+const PROXY_IMG = (id, size) => `/api/img/${id}/${size}`;
+const artUrl = (id, size) => artMode === 'direct' ? AIC_IMG(id, size) : PROXY_IMG(id, size);
+function probeArt(id) {
+  if (artMode) return Promise.resolve(artMode);
+  if (artProbe) return artProbe;
+  artProbe = new Promise(ok => {
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    const done = m => { if (!artMode) artMode = m; ok(artMode); };
+    const t = setTimeout(() => done('proxy'), 4000);
+    img.onload = () => {
+      clearTimeout(t);
+      try { const c = document.createElement('canvas'); c.width = c.height = 1; const g = c.getContext('2d'); g.drawImage(img, 0, 0); g.getImageData(0, 0, 1, 1); done('direct'); }
+      catch (e) { done('proxy'); }
+    };
+    img.onerror = () => { clearTimeout(t); done('proxy'); };
+    img.src = AIC_IMG(id, 's');
+  });
+  return artProbe;
+}
+// <img> 태그용: 바로 받기가 실패하면 서버 경유로 다시 시도
+const artImg = (id, size, attrs) => `<img ${attrs || ''} src="${esc(artUrl(id, size))}" onerror="this.onerror=null;this.src='${esc(PROXY_IMG(id, size))}'" alt="">`;
+/* 학생이 올린 그림(Firebase Storage): 기기가 바로 받고, 막히면 서버를 거쳐 받음 */
+let upDirect = true;
+const upProxy = p => `/api/upimg?p=${encodeURIComponent(p)}&t=${encodeURIComponent(S.token)}`;
+function loadUp(url, p, use) {
+  const direct = url.startsWith('/') || upDirect, u = direct ? url : upProxy(p);
+  loadTex(u, use, true, () => {
+    if (u !== upProxy(p) && !url.startsWith('/')) { upDirect = false; loadTex(upProxy(p), use, true); }
+    else toast('그림을 불러오지 못했어요.');
+  });
+}
+const upImg = (url, p, attrs) => `<img ${attrs || ''} src="${esc(url)}" onerror="this.onerror=null;this.src='${esc(upProxy(p))}'" alt="">`;
+// 고른 그림 파일(아직 저장 전)을 바로 3D 액자에 보여 주기
+function texFromData(data, onReady) {
+  const img = new Image(), tex = new THREE.Texture(img);
+  img.onload = () => { tex.needsUpdate = true; onReady && onReady(); };
+  img.src = data;
+  return tex;
+}
+function frameImg(f, size, attrs) {
+  if (f.src === 'up') return f._data ? `<img ${attrs || ''} src="${f._data}" alt="">` : upImg(f.url, f.path, attrs);
+  return artImg(f.imageId, size, attrs);
+}
+function applySlot(slot) {
+  if (!slot) return;
+  const own = S.view && S.view.own;
+  if (slot.type === 'm') {
+    const f = S.g.frames[slot.index];
+    if (!f) {
+      slot.grp.visible = own; setArtTex(slot, placeholderTex(false)); setSize(slot, 4 / 3); setPlate(slot, null);
+      return;
+    }
+    slot.grp.visible = true; setPlate(slot, f.title, [f.artist, f.date].filter(Boolean).join(', '), f.desc);
+    const use = tex => { if (slot.art.parent && S.g.frames[slot.index] === f) setArtTex(slot, tex); };
+    if (f._tex) { setArtTex(slot, f._tex); return; }
+    if (f.src === 'up') { loadUp(f.url, f.path, use); return; }
+    const want = f.imageId;
+    probeArt(want).then(() => loadTex(artUrl(want, 'm'), use, true, () => {
+      if (artMode === 'direct') { artMode = 'proxy'; loadTex(artUrl(want, 'm'), use, true); } else toast('그림을 불러오지 못했어요.');
+    }));
+  } else {
+    const p = S.g.painting;
+    if (!p && !S.pending) { slot.grp.visible = own; setArtTex(slot, placeholderTex(true)); setSize(slot, 4 / 3); setPlate(slot, null); return; }
+    slot.grp.visible = true;
+    const meta = S.pending || S.pendingMeta || p || {};
+    setPlate(slot, meta.title || '내 그림', (S.view.name || '') + ' 그림', meta.desc);
+    if (S.pending) { if (S.pending.tex) setArtTex(slot, S.pending.tex); return; }
+    if (p._tex) { setArtTex(slot, p._tex); return; }
+    loadUp(p.url, p.path, tex => { if (slot.art.parent && S.g.painting === p) setArtTex(slot, tex); });
+  }
+}
+const paintingImg = attrs => S.pending ? `<img ${attrs || ''} src="${S.pending.data}" alt="">` : upImg(S.g.painting.url, S.g.painting.path, attrs);
+
+/* ================= 움직이기 ================= */
+function spawn() {
+  const L = LAYOUTS[S.g.layout] || LAYOUTS.ell;
+  P.x = L.eye[0]; P.z = L.eye[1]; P.pitch = 0;
+  P.yaw = Math.atan2(-(L.look[0] - L.eye[0]), -(L.look[1] - L.eye[1]));
+}
+function isTyping() { const a = document.activeElement; return !$('#modal').classList.contains('hidden') || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)); }
+function move(dt) {
+  if (isTyping()) { for (const k in keys) keys[k] = false; }
+  let f = 0, s = 0;
+  if (keys.KeyW || keys.ArrowUp) f += 1;
+  if (keys.KeyS || keys.ArrowDown) f -= 1;
+  if (keys.KeyD) s += 1;
+  if (keys.KeyA) s -= 1;
+  if (keys.ArrowLeft) P.yaw += 1.8 * dt;
+  if (keys.ArrowRight) P.yaw -= 1.8 * dt;
+  f += -joy.y; s += joy.x;
+  const mag = Math.hypot(f, s); if (mag > 1) { f /= mag; s /= mag; }
+  if (!f && !s) return;
+  const sp = (keys.ShiftLeft || keys.ShiftRight ? 3.6 : 2.3) * dt;
+  const fx = -Math.sin(P.yaw), fz = -Math.cos(P.yaw), rx = Math.cos(P.yaw), rz = -Math.sin(P.yaw);
+  P.x += (fx * f + rx * s) * sp; P.z += (fz * f + rz * s) * sp;
+  for (let i = 0; i < 3; i++) collide();
+}
+function collide() {
+  for (const [ax, az, bx, bz, h] of colWalls) {
+    const abx = bx - ax, abz = bz - az, l2 = abx * abx + abz * abz;
+    const t = Math.max(0, Math.min(1, ((P.x - ax) * abx + (P.z - az) * abz) / l2));
+    const cx = ax + abx * t, cz = az + abz * t, dx = P.x - cx, dz = P.z - cz, d = Math.hypot(dx, dz), min = RAD + h;
+    if (d < min && d > 1e-6) { P.x = cx + dx / d * min; P.z = cz + dz / d * min; }
+  }
+  for (const [x1, z1, x2, z2] of colBoxes) {
+    const cx = Math.max(x1, Math.min(x2, P.x)), cz = Math.max(z1, Math.min(z2, P.z));
+    const dx = P.x - cx, dz = P.z - cz, d = Math.hypot(dx, dz);
+    if (d < RAD && d > 1e-6) { P.x = cx + dx / d * RAD; P.z = cz + dz / d * RAD; }
+  }
+  for (const [cx, cz, r] of colCircles) {
+    const dx = P.x - cx, dz = P.z - cz, d = Math.hypot(dx, dz), min = r + RAD;
+    if (d < min && d > 1e-6) { P.x = cx + dx / d * min; P.z = cz + dz / d * min; }
+  }
+}
+const ray = new THREE.Raycaster(); ray.far = 9;
+function pick(nx, ny) {
+  ray.setFromCamera(new THREE.Vector2(nx, ny), camera);
+  const objs = []; world && world.traverse(o => { if (o.isMesh) objs.push(o); });
+  const hit = ray.intersectObjects(objs, false)[0];
+  return hit && hit.object.userData.slot && hit.object.parent.visible ? hit.object.userData.slot : null;
+}
+function updateAim() {
+  const el = $('#aim'); const s = pick(0, 0);
+  if (!s) { el.classList.add('hidden'); return; }
+  let t;
+  if (s.type === 'm') { const f = S.g.frames[s.index]; t = f ? `${f.title} — ${f.artist}` : '눌러서 명화 걸기'; }
+  else t = S.g.painting || S.pending ? `${S.view.name}의 그림 — 눌러서 ${S.view.own ? '바꾸기' : '보기·감상평'}` : '눌러서 내 그림 걸기';
+  el.textContent = t; el.classList.remove('hidden');
+}
+function setupControls() {
+  addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+    if (isTyping()) return;
+    keys[e.code] = true;
+    if (/Arrow/.test(e.code)) e.preventDefault();
+  });
+  addEventListener('keyup', e => { keys[e.code] = false; });
+  addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+  const el = $('#view'); let drag = null;
+  el.addEventListener('pointerdown', e => { drag = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: Date.now() }; el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointermove', e => {
+    if (!drag || drag.id !== e.pointerId) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+    P.yaw += dx * 0.005; P.pitch = Math.max(-0.7, Math.min(0.7, P.pitch + dy * 0.004));
+  });
+  el.addEventListener('pointerup', e => {
+    if (!drag || drag.id !== e.pointerId) return;
+    const moved = Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy), quick = Date.now() - drag.t < 600;
+    drag = null;
+    if (moved < 8 && quick) {
+      const r = el.getBoundingClientRect();
+      const s = pick((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      if (s) onSlot(s);
+    }
+  });
+  el.addEventListener('pointercancel', () => { drag = null; });
+  // 화면 조이스틱 (태블릿)
+  const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  if (touch) { $('#joy').classList.remove('hidden'); $('#help').innerHTML = '왼쪽 원: 이동 &nbsp;|&nbsp; 화면 드래그: 둘러보기<br>작품 누르기: 크게 보기 / 바꾸기'; }
+  const j = $('#joy'), kn = $('#knob'); let jid = null;
+  const jset = (cx, cy) => {
+    const r = j.getBoundingClientRect(); let dx = cx - (r.left + r.width / 2), dy = cy - (r.top + r.height / 2);
+    const d = Math.hypot(dx, dy), m = 48; if (d > m) { dx = dx / d * m; dy = dy / d * m; }
+    kn.style.transform = `translate(${dx}px,${dy}px)`; joy.x = dx / m; joy.y = dy / m;
+  };
+  j.addEventListener('pointerdown', e => { jid = e.pointerId; j.setPointerCapture(jid); jset(e.clientX, e.clientY); e.stopPropagation(); });
+  j.addEventListener('pointermove', e => { if (e.pointerId === jid) jset(e.clientX, e.clientY); });
+  const jend = e => { if (e.pointerId !== jid) return; jid = null; joy.x = joy.y = 0; kn.style.transform = ''; };
+  j.addEventListener('pointerup', jend); j.addEventListener('pointercancel', jend);
+}
+
+/* ================= 모달 ================= */
+function openModal(html, narrow) {
+  $('#mbody').innerHTML = html; $('#mbox').classList.toggle('narrow', !!narrow);
+  $('#modal').classList.remove('hidden'); $('#mbox').scrollTop = 0;
+}
+function closeModal() { $('#modal').classList.add('hidden'); $('#mbody').innerHTML = ''; pk = null; }
+$('#mx').onclick = closeModal;
+$('#modal').addEventListener('pointerdown', e => { if (e.target.id === 'modal') closeModal(); });
+
+/* ================= 작품 누르기 ================= */
+const isTeacher = () => !!(S.me && S.me.role === 'teacher');
+function onSlot(s) {
+  if (S.view.own) { s.type === 'm' ? openPicker(s.index) : openUpload(); return; }
+  if (s.type === 'm') { const f = S.g.frames[s.index]; if (f) viewArt(f, s.index); }
+  else if (S.g.painting) viewPainting();
+}
+function viewArt(f, i) {
+  openModal(`<h3>${esc(f.title)}</h3>
+    ${frameImg(f, 'm', 'class="bigimg"')}
+    <div><b>${esc(f.artist)}</b> <span style="color:var(--muted)">${esc(f.date)}</span></div>
+    ${f.desc ? `<p class="descbox">${esc(f.desc)}</p>` : ''}
+    <p class="note">${f.src === 'up' ? `${esc(S.view.name)} 학생이 직접 찾아서 올린 명화예요.` : '작품 이미지: 시카고 미술관(Art Institute of Chicago) 퍼블릭 도메인'}</p>
+    ${isTeacher() ? '<div style="text-align:right"><button class="danger" id="hideBtn">이 작품 내리기</button></div>' : ''}`);
+  if (isTeacher()) $('#hideBtn').onclick = () => hideWork(i);
+}
+async function hideWork(slot) {
+  if (!confirm('이 작품을 전시관에서 내릴까요?\n학생은 나중에 다른 작품을 다시 걸 수 있어요.')) return;
+  try {
+    const r = await api('POST', '/api/teacher/hide', { num: S.view.num, slot });
+    S.g = Object.assign(defaultG(), r.gallery); slots.forEach(applySlot); closeModal(); toast('작품을 내렸어요.');
+  } catch (e) { toast(e.message); }
+}
+
+/* 명화 걸기: 추천 명화 / 미술관 검색 / 내가 찾은 명화 올리기 */
+let pk = null;
+async function getCatalog() {
+  if (S.catalog && S.catalog.length) return S.catalog;
+  for (let i = 0; i < 8; i++) {
+    const r = await api('GET', '/api/art/catalog');
+    if (r.status === 'ready') { S.catalog = r.items; return r.items; }
+    if (r.status === 'error' && i > 1) break;
+    await new Promise(ok => setTimeout(ok, 2000));
+  }
+  return [];
+}
+function openPicker(i) {
+  const cur = S.g.frames[i];
+  pk = { i, sel: cur ? Object.assign({}, cur) : null, items: [], tab: 'cat' };
+  openModal(`<h3>명화 걸기 <small style="font-weight:400;color:var(--muted);font-size:15px">${i + 1}번 자리</small></h3>
+    <div class="tabs"><button data-t="cat">추천 명화</button><button data-t="search">미술관 검색 (영어)</button><button data-t="up">내가 찾은 명화 올리기</button></div>
+    <div id="pkSearch" class="row hidden" style="max-width:560px"><input id="pkQ" placeholder="예: Monet, flower, cat, sea"><button class="primary" id="pkGo" style="flex:0 0 auto">검색</button></div>
+    <div id="pkUp" class="upbox hidden"><b>인터넷에서 찾은 명화 그림 파일을 올려요.</b><br>
+      작가가 세상을 떠난 지 70년이 지난 작품을 골라 주세요. (예: 김홍도, 신윤복, 고흐, 모네)<br>
+      <input type="file" id="pkFile" accept="image/*" style="margin-top:10px;background:#fff"></div>
+    <div id="pkMsg" class="note"></div>
+    <div class="grid" id="pkGrid"></div>
+    <div class="sel" id="pkSel"></div>`);
+  $('#mbody').querySelectorAll('.tabs button').forEach(b => b.onclick = () => pickTab(b.dataset.t));
+  $('#pkGo').onclick = doSearch;
+  $('#pkQ').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+  $('#pkFile').onchange = async e => {
+    const file = e.target.files[0]; if (!file || !pk) return;
+    $('#pkMsg').textContent = '그림을 준비하는 중…';
+    try {
+      const data = await compress(file, 800, 300000);
+      if (!pk) return;
+      pk.sel = { src: 'up', _data: data, title: '', artist: '', date: '', desc: '' };
+      $('#pkMsg').textContent = '아래에 작품 정보를 적고 걸어 주세요.';
+      renderSel(); $('#pkSel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (er) { $('#pkMsg').textContent = er.message; }
+  };
+  pickTab(cur && cur.src === 'up' ? 'up' : 'cat'); renderSel();
+}
+function pickTab(t) {
+  pk.tab = t;
+  $('#mbody').querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  $('#pkSearch').classList.toggle('hidden', t !== 'search');
+  $('#pkUp').classList.toggle('hidden', t !== 'up');
+  $('#pkGrid').innerHTML = ''; $('#pkMsg').textContent = '';
+  if (t === 'cat') showCatalog();
+  else if (t === 'search') { $('#pkMsg').textContent = '영어로 화가 이름이나 그림 내용을 검색해요. 저작권 걱정 없는 작품만 나와요.'; $('#pkQ').focus(); }
+}
+async function showCatalog() {
+  $('#pkMsg').textContent = '명화 목록을 불러오는 중…';
+  try {
+    const items = await getCatalog();
+    if (items.length) await probeArt(items[0].imageId);
+    if (!pk || pk.tab !== 'cat' || !$('#pkMsg')) return;
+    $('#pkMsg').textContent = items.length ? '마음에 드는 작품을 눌러 고르세요.' : '추천 목록을 아직 불러오지 못했어요. 검색이나 직접 올리기를 써 보세요.';
+    renderGrid(items.map(a => ({ id: a.id, imageId: a.imageId, title: a.ko || a.title, artist: a.koArtist || a.artist, date: a.date })));
+  } catch (e) { if ($('#pkMsg')) $('#pkMsg').textContent = e.message; }
+}
+async function doSearch() {
+  const q = $('#pkQ').value.trim(); if (q.length < 2) { $('#pkMsg').textContent = '두 글자 이상 입력해 주세요.'; return; }
+  if (/[ㄱ-힣]/.test(q)) { $('#pkMsg').textContent = '검색은 영어로 해 주세요. 예: 고흐 → van Gogh, 꽃 → flower'; return; }
+  $('#pkMsg').textContent = '찾는 중…'; $('#pkGrid').innerHTML = '';
+  try {
+    const r = await api('GET', '/api/art/search?q=' + encodeURIComponent(q));
+    if (!pk || pk.tab !== 'search') return;
+    $('#pkMsg').textContent = r.items.length ? `${r.items.length}점을 찾았어요.` : '찾는 작품이 없어요. 다른 단어로 검색해 보세요.';
+    renderGrid(r.items);
+  } catch (e) { if ($('#pkMsg')) $('#pkMsg').textContent = e.message; }
+}
+function renderGrid(items) {
+  pk.items = items;
+  $('#pkGrid').innerHTML = items.map((a, k) => `<button class="card${pk.sel && pk.sel.imageId === a.imageId ? ' on' : ''}" data-k="${k}">
+    ${artImg(a.imageId, 's', 'loading="lazy"')}<div>${esc(a.title)}<br><small>${esc(a.artist)}</small></div></button>`).join('');
+  $('#pkGrid').querySelectorAll('.card').forEach(b => b.onclick = () => {
+    const a = pk.items[+b.dataset.k];
+    pk.sel = { src: 'aic', id: a.id, imageId: a.imageId, title: a.title, artist: a.artist, date: a.date, desc: '' };
+    $('#pkGrid').querySelectorAll('.card').forEach(x => x.classList.toggle('on', x === b));
+    renderSel(); $('#pkSel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+}
+function renderSel() {
+  const s = pk.sel, has = !!S.g.frames[pk.i];
+  if (!s) { $('#pkSel').innerHTML = '<div class="note">아직 고른 작품이 없어요.</div>'; return; }
+  $('#pkSel').innerHTML = `${frameImg(s, 'm')}
+    <div class="info">
+      <div class="row"><div><label class="f">작품 제목 *</label><input id="pkTitle" maxlength="60" value="${esc(s.title)}"></div>
+        <div><label class="f">작가 *</label><input id="pkArtist" maxlength="40" value="${esc(s.artist)}"></div></div>
+      <div class="row"><div style="flex:0 0 140px"><label class="f">연도</label><input id="pkDate" maxlength="30" value="${esc(s.date)}" placeholder="예: 1889"></div>
+        <div><label class="f">간단한 설명 (80자)</label><input id="pkDesc" maxlength="80" value="${esc(s.desc)}" placeholder="예: 비 오는 파리 거리의 분위기가 잘 느껴져요"></div></div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center"><button class="primary" id="pkHang">이 자리에 걸기</button>${has ? '<button class="danger" id="pkDel">자리 비우기</button>' : ''}<span class="msg" id="pkErr" style="margin:0"></span></div>
+    </div>`;
+  $('#pkHang').onclick = () => {
+    const title = $('#pkTitle').value.trim(), artist = $('#pkArtist').value.trim();
+    if (!title || !artist) { $('#pkErr').textContent = '작품 제목과 작가를 적어 주세요.'; return; }
+    const i = pk.i, slot = slots.find(x => x.type === 'm' && x.index === i);
+    const f = Object.assign({}, s, { title, artist, date: $('#pkDate').value.trim(), desc: $('#pkDesc').value.trim() });
+    if (f.src === 'up' && f._data && !f._tex) f._tex = texFromData(f._data, () => applySlot(slot));
+    S.g.frames[i] = f; markDirty(); applySlot(slot); closeModal(); toast('작품을 걸었어요. 다 꾸미면 저장을 눌러 주세요.');
+  };
+  if (has) $('#pkDel').onclick = () => { const i = pk.i; S.g.frames[i] = null; markDirty(); applySlot(slots.find(x => x.type === 'm' && x.index === i)); closeModal(); };
+}
+
+/* 그림 파일 줄이기 (긴 변 maxSide px, 용량 maxLen 이하) */
+function compress(file, maxSide, maxLen) {
+  return new Promise((ok, no) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (Math.max(w, h) > maxSide) { const k = maxSide / Math.max(w, h); w = Math.round(w * k); h = Math.round(h * k); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+      let q = 0.82, d = c.toDataURL('image/jpeg', q);
+      while (d.length > maxLen && q > 0.4) { q -= 0.1; d = c.toDataURL('image/jpeg', q); }
+      URL.revokeObjectURL(url); ok(d);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); no(new Error('이 그림 파일은 열 수 없어요. jpg나 png로 올려 주세요.')); };
+    img.src = url;
+  });
+}
+
+/* 내 그림 올리기 */
+function openUpload() {
+  const p = S.pending || S.pendingMeta || S.g.painting || {};
+  const has = !!(S.pending || S.g.painting);
+  openModal(`<h3>내 그림 걸기</h3>
+    <div class="row" style="align-items:flex-start">
+      <div style="flex:1.2"><div id="upPrevBox">${has ? paintingImg('class="bigimg" style="max-height:44vh"') : '<div class="note" style="padding:40px 0;text-align:center;border:2px dashed var(--line);border-radius:12px">아직 올린 그림이 없어요</div>'}</div>
+        <label class="f">그림 파일 (사진으로 찍은 그림도 돼요)</label><input type="file" id="upFile" accept="image/*"></div>
+      <div style="flex:1"><label class="f">작품 제목 (30자)</label><input id="upTitle" maxlength="30" value="${esc(p.title || '')}">
+        <label class="f">작품 설명 (150자)</label><textarea id="upDesc" maxlength="150" placeholder="무엇을 그렸는지, 어떤 생각으로 그렸는지 적어 보세요.">${esc(p.desc || '')}</textarea>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="green" id="upHang">걸기</button>${S.g.painting ? '<button id="upCm">감상평 보기</button>' : ''}</div>
+        <div class="msg" id="upMsg"></div></div>
+    </div>`);
+  let data = null;
+  $('#upFile').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    $('#upMsg').textContent = '';
+    try { data = await compress(f, 1024, 600000); $('#upPrevBox').innerHTML = `<img class="bigimg" style="max-height:44vh" src="${data}" alt="">`; }
+    catch (er) { $('#upMsg').textContent = er.message; }
+  };
+  $('#upHang').onclick = () => {
+    const title = $('#upTitle').value.trim(), desc = $('#upDesc').value.trim();
+    if (!data && !has) { $('#upMsg').textContent = '먼저 그림 파일을 골라 주세요.'; return; }
+    if (!title) { $('#upMsg').textContent = '작품 제목을 적어 주세요.'; return; }
+    const slot = slots.find(x => x.type === 's');
+    if (data) { S.pending = { data, title, desc, tex: texFromData(data, () => applySlot(slot)) }; S.pendingMeta = null; }
+    else if (S.pending) { S.pending.title = title; S.pending.desc = desc; }
+    else S.pendingMeta = { title, desc };
+    markDirty(); applySlot(slot); closeModal(); toast('그림을 걸었어요. 저장을 눌러야 친구들도 볼 수 있어요.');
+  };
+  if (S.g.painting) $('#upCm').onclick = () => viewPainting();
+}
+
+/* 내 그림 보기 + 감상평 */
+async function viewPainting() {
+  const p = S.g.painting; const v = S.view;
+  openModal(`<h3>${esc(p.title || '내 그림')} <small style="font-weight:400;color:var(--muted);font-size:15px">${esc(v.name)}</small></h3>
+    ${paintingImg('class="bigimg"')}
+    ${p.desc ? `<p class="descbox" style="background:#eef6f2">${esc(p.desc)}</p>` : ''}
+    ${isTeacher() ? '<div style="text-align:right"><button class="danger" id="hideBtn">이 그림 내리기</button></div>' : ''}
+    <div class="comments"><b>감상평</b><div id="cmList" class="note">불러오는 중…</div><div id="cmWrite"></div></div>`);
+  if (isTeacher()) $('#hideBtn').onclick = () => hideWork('s');
+  try { const r = await api('GET', `/api/comments/${v.cid}/${v.num}`); renderComments(r.list, r.canWrite); }
+  catch (e) { if ($('#cmList')) $('#cmList').textContent = e.message; }
+}
+function renderComments(list, canWrite) {
+  const v = S.view, me = S.me;
+  const el = $('#cmList'); if (!el) return;
+  el.className = '';
+  el.innerHTML = list.length ? list.map(c => {
+    const canDel = me.role === 'teacher' || (me.role === 'student' && c.by === me.num);
+    return `<div class="cm"><div class="t"><b>${esc(c.name)}</b> <span class="note">${new Date(c.at).toLocaleDateString('ko-KR')}</span><div>${esc(c.text)}</div></div>${canDel ? `<button class="danger" data-at="${c.at}">지우기</button>` : ''}</div>`;
+  }).join('') : '<div class="note">아직 감상평이 없어요.</div>';
+  el.querySelectorAll('button[data-at]').forEach(b => b.onclick = async () => {
+    if (!confirm('이 감상평을 지울까요?')) return;
+    try { const r = await api('DELETE', `/api/comments/${v.cid}/${v.num}/${b.dataset.at}`); renderComments(r.list, canWrite); } catch (e) { toast(e.message); }
+  });
+  $('#cmWrite').innerHTML = canWrite ? `<div class="row" style="margin-top:10px"><input id="cmIn" maxlength="80" placeholder="따뜻한 감상평을 남겨 주세요 (80자)"><button class="green" id="cmGo" style="flex:0 0 auto">남기기</button></div>`
+    : '<div class="note">선생님이 전시를 열면 감상평을 남길 수 있어요.</div>';
+  if (canWrite) {
+    const go = async () => {
+      const t = $('#cmIn').value.trim(); if (t.length < 2) { toast('두 글자 이상 적어 주세요.'); return; }
+      $('#cmGo').disabled = true;
+      try { const r = await api('POST', `/api/comments/${v.cid}/${v.num}`, { text: t }); renderComments(r.list, true); }
+      catch (e) { toast(e.message); if ($('#cmGo')) $('#cmGo').disabled = false; }
+    };
+    $('#cmGo').onclick = go; $('#cmIn').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  }
+}
+
+/* ================= 전시관 설정 ================= */
+function openSettings(first) {
+  const g = S.g;
+  openModal(`<h3>${first ? '내 전시관 만들기' : '전시관 설정'}</h3>
+    ${first ? '<div class="note" style="margin-top:-6px">전시관 이름과 구조를 고르고, 벽에 다가가 빈 액자를 눌러 작품을 거세요.</div>' : ''}
+    <div class="row"><div><label class="f">전시관 이름 (20자)</label><input id="stName" maxlength="20" value="${esc(g.galleryName)}" placeholder="예: 빛과 색의 미술관"></div>
+    <div><label class="f">입구 소개 글 (80자)</label><input id="stIntro" maxlength="80" value="${esc(g.intro)}" placeholder="예: 비와 물을 주제로 모았어요"></div></div>
+    <label class="f">전시관 구조 (모두 명화 10점 + 내 그림 1점)</label>
+    <div class="layouts">${LAYOUT_ORDER.map(k => `<button data-l="${k}" class="${g.layout === k ? 'on' : ''}"><b>${LAYOUTS[k].name}</b>${LAYOUTS[k].desc}</button>`).join('')}</div>
+    <div class="row"><div><label class="f">벽 색</label><div class="sw">${WALLS.map((w, i) => `<button data-w="${i}" title="${w.n}" style="background:${hex(w.c)}" class="${g.wall === i ? 'on' : ''}"></button>`).join('')}</div></div>
+    <div><label class="f">바닥</label><div class="sw">${FLOORS.map((w, i) => `<button data-f="${i}" title="${w.n}" style="background:${hex(w.c)}" class="${g.floor === i ? 'on' : ''}"></button>`).join('')}</div></div></div>
+    <div style="margin-top:18px;text-align:right"><button class="primary" id="stOk">${first ? '전시관 들어가기' : '확인'}</button></div>`);
+  const mb = $('#mbody');
+  mb.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { g.layout = b.dataset.l; mb.querySelectorAll('[data-l]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); spawn(); });
+  mb.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { g.wall = +b.dataset.w; mb.querySelectorAll('[data-w]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); });
+  mb.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { g.floor = +b.dataset.f; mb.querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); });
+  $('#stOk').onclick = () => {
+    const n = $('#stName').value.trim(), it = $('#stIntro').value.trim();
+    if (n !== g.galleryName || it !== g.intro) { g.galleryName = n; g.intro = it; markDirty(); }
+    closeModal(); renderHud(); if (first) showBanner();
+  };
+}
+
+/* ================= 저장 ================= */
+function markDirty() { S.dirty = true; renderHud(); }
+const cleanObj = o => { if (!o) return null; const c = {}; for (const k in o) if (k[0] !== '_') c[k] = o[k]; return c; };
+async function save() {
+  if (!S.view || !S.view.own) return;
+  if (!S.dirty) { toast('바뀐 내용이 없어요. 이미 저장되어 있어요.'); return; } // 같은 내용은 다시 보내지 않음
+  const b = $('#bSave'); if (b) b.disabled = true;
+  try {
+    const g = S.g;
+    // 1) 새로 고른 그림 파일만 먼저 올리기 (Firebase Storage)
+    const total = g.frames.filter(f => f && f._data).length + (S.pending ? 1 : 0); let n = 0;
+    for (const f of g.frames) {
+      if (!f || f.src !== 'up' || !f._data) continue;
+      toast(`그림 올리는 중… (${++n}/${total})`);
+      const r = await api('POST', '/api/upload', { data: f._data });
+      f.path = r.path; f.url = r.url; delete f._data;
+    }
+    let painting = null;
+    if (S.pending) {
+      toast(`그림 올리는 중… (${++n}/${total})`);
+      const r = await api('POST', '/api/upload', { data: S.pending.data });
+      painting = { path: r.path, url: r.url, title: S.pending.title, desc: S.pending.desc };
+    } else if (S.pendingMeta) painting = S.pendingMeta;
+    // 2) 전시관 정보 저장 (요청 1번)
+    const r = await api('PUT', '/api/save', { layout: g.layout, wall: g.wall, floor: g.floor, galleryName: g.galleryName, intro: g.intro, frames: g.frames.map(cleanObj), painting });
+    const tex = S.pending ? S.pending.tex : (g.painting && g.painting._tex);
+    g.painting = r.gallery.painting; if (g.painting && tex) g.painting._tex = tex;
+    r.gallery.frames.forEach((f, i) => { if (!f) g.frames[i] = null; });
+    S.pending = null; S.pendingMeta = null; S.dirty = false; renderHud(); slots.forEach(applySlot); toast('저장했어요!');
+  } catch (e) { toast(e.message); }
+  if ($('#bSave')) $('#bSave').disabled = false;
+}
+window.addEventListener('beforeunload', e => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ================= 화면 위쪽 ================= */
+function renderHud() {
+  const v = S.view, g = S.g, me = S.me;
+  if (v) {
+    $('#hTitle').textContent = (g.galleryName ? `‘${g.galleryName}’` : `${v.name}의 전시관`);
+    $('#hSub').innerHTML = `${esc(v.name)}${g.galleryName ? '의 전시관' : ''} <span class="badge ${v.own ? '' : 'v'}">${v.own ? '꾸미는 중' : '구경 중'}</span>`;
+  } else { $('#hTitle').textContent = me.role === 'teacher' ? `${className(me.classId)} 선생님` : ''; $('#hSub').textContent = '학생 전시관을 골라 구경하세요'; }
+  const B = [];
+  if (v && v.own) { B.push(`<button id="bSet">⚙ 설정</button>`); B.push(`<button id="bSave" class="primary${S.dirty ? ' dirty' : ''}">저장</button>`); }
+  if (v && !v.own && me.role === 'student') B.push(`<button id="bHome">🏠 내 전시관</button>`);
+  B.push(`<button id="bFriends">${me.role === 'teacher' ? '학생 전시관' : '친구 전시관'}</button>`);
+  if (me.role === 'teacher') B.push(`<button id="bTeacher">관리</button>`);
+  B.push(`<button id="bOut" class="ghost">나가기</button>`);
+  $('#hBtns').innerHTML = B.join('');
+  const on = (id, f) => { const e = $('#' + id); if (e) e.onclick = f; };
+  on('bSet', () => openSettings(false)); on('bSave', save);
+  on('bHome', () => leaveThen(() => loadGallery(me.classId, me.num, true)));
+  on('bFriends', openFriends); on('bTeacher', openTeacher);
+  on('bOut', () => { if (S.dirty && !confirm('저장하지 않은 내용이 있어요. 그래도 나갈까요?')) return; logout(); });
+}
+const className = id => { const c = S.cfg.classes.find(x => x.id === id); return c ? c.name : id; };
+function showBanner() {
+  const g = S.g, v = S.view, bn = $('#banner');
+  $('#bnT').textContent = g.galleryName ? `‘${g.galleryName}’` : `${v.name}의 전시관`;
+  $('#bnP').textContent = g.intro || (v.own ? '빈 액자를 눌러 작품을 걸어 보세요' : `${v.name}의 전시관에 오신 것을 환영해요`);
+  bn.style.transition = 'none'; bn.style.opacity = 1;
+  setTimeout(() => { bn.style.transition = 'opacity 1.2s'; bn.style.opacity = 0; }, 2600);
+}
+
+/* ================= 전시관 불러오기 ================= */
+function leaveThen(fn) {
+  if (S.dirty && S.view && S.view.own) {
+    if (confirm('저장하지 않은 내용이 있어요. 저장하고 이동할까요?\n(취소를 누르면 저장하지 않고 이동해요)')) { save().then(fn); return; }
+    S.dirty = false; S.pending = null; S.pendingMeta = null;
+  }
+  fn();
+}
+async function loadGallery(cid, num, own) {
+  loading(true);
+  try {
+    const r = await api('GET', `/api/gallery/${cid}/${num}`);
+    S.view = { cid, num, own, name: own ? S.me.name : r.name };
+    S.g = Object.assign(defaultG(), r.gallery || {});
+    if (!Array.isArray(S.g.frames)) S.g.frames = Array(10).fill(null);
+    S.pending = null; S.pendingMeta = null; S.dirty = false;
+    buildScene(); spawn(); renderHud(); closeModal();
+    if (own && !r.gallery) openSettings(true); else showBanner();
+    if (!own && !r.gallery) toast('아직 꾸미지 않은 전시관이에요.');
+  } catch (e) { toast(e.message); }
+  loading(false);
+}
+
+/* ================= 친구 전시관 ================= */
+const LNAME = k => (LAYOUTS[k] ? LAYOUTS[k].name : '');
+async function openFriends() {
+  const me = S.me;
+  openModal(`<h3>${className(me.classId)} 전시관</h3><div id="frBody" class="note">불러오는 중…</div>`, true);
+  try {
+    const r = await api('GET', '/api/class/' + me.classId);
+    if (!r.open && me.role !== 'teacher') { $('#frBody').innerHTML = '아직 전시가 열리지 않았어요.<br>선생님이 전시를 열면 친구들의 전시관을 구경할 수 있어요.'; return; }
+    const list = r.students.filter(s => s.saved);
+    if (!list.length) { $('#frBody').textContent = '아직 저장된 전시관이 없어요.'; return; }
+    $('#frBody').className = 'list';
+    $('#frBody').innerHTML = list.map(s => `<div class="item"><div class="t"><b>${s.num}번 ${esc(s.name)}</b>${me.role === 'student' && s.num === me.num ? ' <span class="badge">나</span>' : ''}<br>
+      <small>${s.galleryName ? '‘' + esc(s.galleryName) + '’ · ' : ''}${esc(LNAME(s.layout))} · 명화 ${s.count}점 · 내 그림 ${s.hasPainting ? '있음' : '없음'}</small></div>
+      <button data-n="${s.num}">구경하기</button></div>`).join('');
+    $('#frBody').querySelectorAll('button[data-n]').forEach(b => b.onclick = () => {
+      const n = +b.dataset.n, own = me.role === 'student' && n === me.num;
+      leaveThen(() => loadGallery(me.classId, n, own));
+    });
+  } catch (e) { $('#frBody').textContent = e.message; }
+}
+
+/* ================= 교사 관리 ================= */
+async function openTeacher() {
+  const me = S.me;
+  openModal(`<h3>${className(me.classId)} 관리</h3><div id="tcBody" class="note">불러오는 중…</div>`);
+  try {
+    const r = await api('GET', '/api/class/' + me.classId);
+    const warns = [];
+    if (S.cfg.storage === 'local') warns.push('지금은 <b>임시 저장소</b>를 쓰고 있어요. 서버가 다시 켜지면 학생 작품과 비밀번호가 지워질 수 있어요. 실제 수업 전에 Firebase를 연결해 주세요(README 참고).');
+    else if (S.cfg.images === 'local') warns.push('Firebase <b>Storage</b>를 찾지 못해 학생이 올린 그림을 임시 폴더에 저장하고 있어요. README를 보고 Storage를 켜 주세요.');
+    const size = r.size || r.students.length || 25, hasPin = r.students.some(s => s.pin);
+    $('#tcBody').className = '';
+    $('#tcBody').innerHTML = `${warns.map(w => `<div class="warn">${w}</div>`).join('')}
+      <div class="tcbar">
+        <div class="switch"><b>전시</b><button id="tcOpen" class="${r.open ? 'green' : ''}">${r.open ? '열려 있음 (닫기)' : '닫혀 있음 (열기)'}</button></div>
+        <div class="switch"><b>학생 수</b><input id="tcSize" type="number" min="1" max="${S.cfg.maxStudents}" value="${size}" style="width:76px">
+          <button id="tcMake">비밀번호 만들기</button><button id="tcPrint" class="primary"${hasPin ? '' : ' disabled'}>비밀번호 인쇄</button></div>
+      </div>
+      <div class="note">전시를 열면 학생들이 친구 전시관을 구경하고 감상평을 남길 수 있어요. '비밀번호 만들기'는 아직 비밀번호가 없는 번호에만 새로 만들어요.</div>
+      ${r.students.length ? `<table class="tc"><thead><tr><th>번호</th><th>이름</th><th>비밀번호</th><th>전시관</th><th></th></tr></thead><tbody>${r.students.map(s => `<tr>
+        <td>${s.num}</td><td>${s.name ? esc(s.name) : '<span class="note">첫 로그인 때 입력</span>'}</td>
+        <td class="pin">${s.pin || '-'}</td>
+        <td><small>${s.saved ? `${s.galleryName ? '‘' + esc(s.galleryName) + '’ · ' : ''}명화 ${s.count}점 · 내 그림 ${s.hasPainting ? '있음' : '없음'}` : '아직 저장 안 함'}</small></td>
+        <td class="acts">${s.saved ? `<button data-v="${s.num}">구경</button>` : ''}<button data-n="${s.num}">이름</button><button class="danger" data-p="${s.num}">새 비밀번호</button></td></tr>`).join('')}</tbody></table>`
+        : '<div class="note" style="margin-top:14px;font-size:15px">학생 수를 적고 <b>비밀번호 만들기</b>를 누르면 번호마다 숫자 4자리 비밀번호가 만들어져요. 그다음 <b>비밀번호 인쇄</b>로 잘라서 나눠 주세요.</div>'}`;
+    const mb = $('#tcBody');
+    $('#tcOpen').onclick = async () => { try { await api('POST', '/api/teacher/open', { open: !r.open }); toast(!r.open ? '전시를 열었어요.' : '전시를 닫았어요.'); openTeacher(); } catch (e) { toast(e.message); } };
+    $('#tcMake').onclick = async () => {
+      const n = +$('#tcSize').value;
+      if (!(n >= 1 && n <= S.cfg.maxStudents)) { toast(`학생 수는 1~${S.cfg.maxStudents} 사이로 적어 주세요.`); return; }
+      try { await api('POST', '/api/teacher/pins', { size: n }); toast('비밀번호를 만들었어요.'); openTeacher(); } catch (e) { toast(e.message); }
+    };
+    $('#tcPrint').onclick = () => printPins(r.students.filter(s => s.pin));
+    mb.querySelectorAll('[data-v]').forEach(b => b.onclick = () => loadGallery(me.classId, +b.dataset.v, false));
+    mb.querySelectorAll('[data-n]').forEach(b => b.onclick = async () => {
+      const s = r.students.find(x => x.num === +b.dataset.n);
+      const nm = prompt(`${s.num}번 학생 이름`, s.name || ''); if (nm == null) return;
+      try { await api('POST', '/api/teacher/name', { num: s.num, name: nm }); openTeacher(); } catch (e) { toast(e.message); }
+    });
+    mb.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => {
+      if (!confirm(`${b.dataset.p}번 학생의 비밀번호를 새로 만들까요?\n이전 비밀번호로는 더 이상 들어올 수 없어요. 작품은 그대로 남아요.`)) return;
+      try { const x = await api('POST', '/api/teacher/resetpin', { num: +b.dataset.p }); toast(`${b.dataset.p}번 새 비밀번호: ${x.pin}`); openTeacher(); } catch (e) { toast(e.message); }
+    });
+  } catch (e) { $('#tcBody').textContent = e.message; }
+}
+// 비밀번호 쪽지 인쇄 (점선대로 잘라서 나눠 주기)
+function printPins(list) {
+  if (!list.length) { toast('먼저 비밀번호를 만들어 주세요.'); return; }
+  const w = window.open('', '_blank');
+  if (!w) { toast('팝업이 막혀 있어요. 브라우저에서 팝업을 허용해 주세요.'); return; }
+  const cls = className(S.me.classId), url = location.origin;
+  w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>${esc(cls)} 가상 미술관 비밀번호</title><style>
+    body{font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;margin:8mm;color:#222}
+    h2{font-size:15pt;margin:0 0 1mm}.u{font-size:10pt;color:#555;margin-bottom:4mm}
+    .g{display:grid;grid-template-columns:repeat(3,1fr)}
+    .c{border:1px dashed #999;padding:4mm 5mm;height:34mm;box-sizing:border-box;page-break-inside:avoid}
+    .c .t{font-size:9pt;color:#666}.c .n{font-size:14pt;font-weight:700;margin-top:1mm}
+    .c .p{font-size:26pt;letter-spacing:3mm;font-weight:700;margin-top:1mm;font-family:Consolas,monospace}
+    .c .a{font-size:8pt;color:#777;word-break:break-all}
+    .noprint{margin-bottom:5mm;font-size:11pt}.noprint button{font-size:12pt;padding:4px 14px}
+    @media print{.noprint{display:none}}
+  </style></head><body>
+  <div class="noprint"><button onclick="print()">인쇄하기</button> 점선을 따라 잘라서 나눠 주세요.</div>
+  <h2>${esc(cls)} 우리 반 가상 미술관</h2><div class="u">접속 주소: ${esc(url)}</div>
+  <div class="g">${list.map(s => `<div class="c"><div class="t">${esc(cls)} 가상 미술관</div><div class="n">${s.num}번 ${esc(s.name || '')}</div><div class="p">${s.pin}</div><div class="a">${esc(url)}</div></div>`).join('')}</div>
+  <script>setTimeout(function(){print()},500)<\/script></body></html>`);
+  w.document.close();
+}
+
+/* ================= 로그인 ================= */
+function renderLogin() {
+  const cls = S.cfg.classes;
+  $('#classBtns').innerHTML = cls.map(c => `<button data-c="${c.id}">${esc(c.name.replace(/^\d+학년 /, ''))}</button>`).join('');
+  $('#classBtns').querySelectorAll('button').forEach(b => b.onclick = () => { S.classSel = b.dataset.c; $('#classBtns').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#lgMsg').textContent = ''; });
+  $('#lgNum').innerHTML = Array.from({ length: S.cfg.maxStudents }, (_, i) => `<option value="${i + 1}">${i + 1}번</option>`).join('');
+  $('#tabS').onclick = () => { $('#tabS').classList.add('on'); $('#tabT').classList.remove('on'); $('#formS').classList.remove('hidden'); $('#formT').classList.add('hidden'); $('#lgMsg').textContent = ''; };
+  $('#tabT').onclick = () => { $('#tabT').classList.add('on'); $('#tabS').classList.remove('on'); $('#formT').classList.remove('hidden'); $('#formS').classList.add('hidden'); $('#lgMsg').textContent = ''; };
+  $('#lgNum').onchange = () => { $('#newBox').classList.add('hidden'); };
+  $('#lgGo').onclick = loginStudent; $('#lgTGo').onclick = loginTeacher;
+  ['#lgPin', '#lgName'].forEach(s => $(s).addEventListener('keydown', e => { if (e.key === 'Enter') loginStudent(); }));
+  $('#lgTpw').addEventListener('keydown', e => { if (e.key === 'Enter') loginTeacher(); });
+}
+async function loginStudent() {
+  const msg = $('#lgMsg'); msg.textContent = '';
+  if (!S.classSel) { msg.textContent = '반을 먼저 골라 주세요.'; return; }
+  const pin = $('#lgPin').value.trim();
+  if (!/^\d{4}$/.test(pin)) { msg.textContent = '비밀번호는 숫자 4자리예요.'; return; }
+  const isNew = !$('#newBox').classList.contains('hidden');
+  const body = { classId: S.classSel, num: +$('#lgNum').value, pin };
+  if (isNew) {
+    const name = $('#lgName').value.trim();
+    if (!name) { msg.textContent = '이름을 적어 주세요.'; return; }
+    body.name = name;
+  }
+  $('#lgGo').disabled = true;
+  try {
+    const r = await api('POST', '/api/login', body);
+    if (r.needName) { $('#newBox').classList.remove('hidden'); $('#lgName').focus(); $('#lgGo').disabled = false; return; }
+    S.token = r.token; S.me = r.me; saveSess(); await enter();
+  } catch (e) { msg.textContent = e.message; }
+  $('#lgGo').disabled = false;
+}
+async function loginTeacher() {
+  const msg = $('#lgMsg'); msg.textContent = '';
+  if (!S.classSel) { msg.textContent = '반을 먼저 골라 주세요.'; return; }
+  $('#lgTGo').disabled = true;
+  try {
+    const r = await api('POST', '/api/teacher/login', { classId: S.classSel, password: $('#lgTpw').value });
+    S.token = r.token; S.me = r.me; saveSess(); await enter();
+  } catch (e) { msg.textContent = e.message; }
+  $('#lgTGo').disabled = false;
+}
+async function enter() {
+  $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+  init3D();
+  if (S.me.role === 'student') await loadGallery(S.me.classId, S.me.num, true);
+  else {
+    S.view = null; S.g = defaultG(); buildScene(); spawn(); renderHud(); openTeacher();
+  }
+}
+function logout(silent) {
+  S.token = null; S.me = null; S.view = null; S.dirty = false; S.pending = null; S.pendingMeta = null; clearSess();
+  closeModal(); $('#app').classList.add('hidden'); $('#login').classList.remove('hidden');
+  $('#lgPin').value = ''; $('#lgName').value = ''; $('#lgTpw').value = ''; $('#newBox').classList.add('hidden');
+  if (silent) $('#lgMsg').textContent = '다시 로그인해 주세요.';
+}
+
+(async function init() {
+  try { S.cfg = await api('GET', '/api/config'); }
+  catch (e) { $('#lgMsg').textContent = e.message; return; }
+  renderLogin();
+  const s = loadSess();
+  if (s && s.token && s.me) { S.token = s.token; S.me = s.me; try { await enter(); } catch (e) { logout(true); } }
+})();
+</script>
+</body>
+</html>
