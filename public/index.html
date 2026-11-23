@@ -105,6 +105,17 @@ table.tc td.pin{font-family:Consolas,monospace;font-size:18px;letter-spacing:2px
 table.tc td.acts{text-align:right;white-space:nowrap}
 table.tc td.acts button{padding:4px 9px;font-size:13px;margin-left:4px}
 .tabs button{white-space:nowrap}
+.themes{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.themes button{padding:0;overflow:hidden;text-align:center;font-size:13px;border-radius:10px}
+.themes button img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}
+.themes button span{display:block;padding:5px 2px}
+.themes button.on{outline:3px solid var(--accent);border-color:var(--accent);background:#fbf3e6}
+.tx{display:flex;flex-wrap:wrap;gap:6px}
+.tx button{padding:3px;width:64px;font-size:11px;line-height:1.2;text-align:center;border-radius:8px}
+.tx button i{display:block;width:100%;height:44px;border-radius:5px;background-size:120px}
+.tx button span{display:block;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx button.on{outline:3px solid var(--accent);border-color:var(--accent)}
+@media (max-width:1000px){.themes{grid-template-columns:repeat(3,1fr)}}
 .card small.mus{color:var(--accent2)}
 @media (max-width:820px){.layouts{grid-template-columns:repeat(2,1fr)}.sel{flex-direction:column}.sel img{width:100%}}
 </style>
@@ -222,10 +233,37 @@ const LAYOUTS = {
     door: [4.5, 14, 7.5, 14], stu: [6, 6, 0, -1, 0.3], eye: [6, 12.8], look: [6, 6], benches: [[6, 2.6, 0], [6, 10, 0]], mats: [[6, 14.6, 0]] }
 };
 const LAYOUT_ORDER = ['corridor', 'ell', 'oct', 'partition'];
-const WALLS = [{ c: 0xf6f3ec, n: '흰색' }, { c: 0xd8d6d0, n: '연회색' }, { c: 0x2f3e5c, n: '남색' }, { c: 0x6e2b35, n: '버건디' }, { c: 0x5f6b4e, n: '올리브' }];
-const FLOORS = [{ c: 0xb98b5e, n: '밝은 원목' }, { c: 0x6e4b32, n: '진한 원목' }, { c: 0x9a9890, n: '회색 돌' }];
+/* 바닥·벽 재질 (public/tex 폴더의 작은 그림, 한 번 받으면 기기에 저장됨) */
+const FLOOR_TEX = { plank: '넓은 원목 마루', parquet: '바스켓 파켓', darkwood: '진한 원목 마루', marble: '흰 대리석', beigemarble: '베이지 대리석', terrazzo: '테라조', concrete: '폴리싱 콘크리트' };
+const WALL_TEX = { plaster: '석고 미장', linen: '린넨 패브릭', damask: '클래식 벽지', slat: '원목 루버', concrete: '노출 콘크리트', brick: '붉은 벽돌', redsalon: '레드 살롱 몰딩', palace: '궁전 금장 몰딩' };
+const TALL_WALLS = { redsalon: 1, palace: 1 }; // 벽 높이 전체에 맞춰 한 장으로 입히는 몰딩 벽
+const THEMES = {
+  classic: { n: '클래식 갤러리', floor: 'marble', wall: 'plaster' },
+  european: { n: '유럽 고전 미술관', floor: 'parquet', wall: 'damask' },
+  modern: { n: '현대 미술관', floor: 'concrete', wall: 'concrete' },
+  warm: { n: '따뜻한 모던', floor: 'terrazzo', wall: 'slat' },
+  salon: { n: '레드 살롱', floor: 'darkwood', wall: 'redsalon', ceil: 0xf4ecdc },
+  palace: { n: '궁전 홀', floor: 'beigemarble', wall: 'palace', ceil: 0xf6f0e2 }
+};
+const themeOf = g => THEMES[g.theme] || THEMES.classic;
+const floorKey = g => FLOOR_TEX[g.floor] ? g.floor : themeOf(g).floor;
+const wallKey = g => WALL_TEX[g.wall] ? g.wall : themeOf(g).wall;
+const surfCache = {};
+function surfTex(kind, key) {
+  const url = `/tex/${kind}_${key}.jpg`;
+  if (surfCache[url]) return surfCache[url];
+  const t = new THREE.TextureLoader().load(url, () => invalidate());
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  return (surfCache[url] = t);
+}
+// 재질 크기를 실제 길이(미터)에 맞추기: 바닥·벽은 2m마다 한 번 반복
+function scaleUV(geo, su, sv) {
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+  uv.needsUpdate = true; return geo;
+}
 const hex = c => '#' + c.toString(16).padStart(6, '0');
-const defaultG = () => ({ layout: 'ell', wall: 0, floor: 0, galleryName: '', intro: '', frames: Array(10).fill(null), painting: null });
+const defaultG = () => ({ layout: 'ell', theme: 'classic', wall: '', floor: '', galleryName: '', intro: '', frames: Array(10).fill(null), painting: null });
 
 /* ================= 3D 장면 ================= */
 let renderer, scene, camera, world = null, slots = [], colWalls = [], colBoxes = [], colCircles = [];
@@ -342,19 +380,20 @@ function buildScene() {
   const g = S.g, L = LAYOUTS[g.layout] || LAYOUTS.ell;
   world = new THREE.Group(); scene.add(world);
   slots = []; colWalls = []; colBoxes = []; colCircles = [];
-  const wallM = new THREE.MeshLambertMaterial({ color: WALLS[g.wall] ? WALLS[g.wall].c : WALLS[0].c });
-  const floorM = new THREE.MeshLambertMaterial({ color: FLOORS[g.floor] ? FLOORS[g.floor].c : FLOORS[0].c });
-  const ceilM = new THREE.MeshLambertMaterial({ color: 0xf2efe8, side: THREE.DoubleSide });
+  const wk = wallKey(g), tall = !!TALL_WALLS[wk];
+  const wallM = new THREE.MeshLambertMaterial({ map: surfTex('wall', wk) });
+  const floorM = new THREE.MeshLambertMaterial({ map: surfTex('floor', floorKey(g)) });
+  const ceilM = new THREE.MeshLambertMaterial({ color: themeOf(g).ceil || 0xf2efe8, side: THREE.DoubleSide });
   const darkM = new THREE.MeshLambertMaterial({ color: 0x3a2e22 }), goldM = new THREE.MeshLambertMaterial({ color: 0xc9a24a });
   const benchM = new THREE.MeshLambertMaterial({ color: 0x5b4636 }), matM = new THREE.MeshLambertMaterial({ color: 0x7a2e2e });
   const H = 2.9;
   // 바닥, 천장
   if (L.oct) {
-    const f = new THREE.Mesh(new THREE.CylinderGeometry(R8, R8, 0.1, 8, 1, false, Math.PI / 8), floorM); f.position.y = -0.05; world.add(f);
+    const f = new THREE.Mesh(scaleUV(new THREE.CylinderGeometry(R8, R8, 0.1, 8, 1, false, Math.PI / 8), R8, R8), floorM); f.position.y = -0.05; world.add(f);
     const c = new THREE.Mesh(new THREE.CylinderGeometry(R8, R8, 0.1, 8, 1, false, Math.PI / 8), ceilM); c.position.y = H + 0.05; world.add(c);
   } else L.floors.forEach(r => {
     const w = r[2] - r[0], d = r[3] - r[1];
-    const f = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), floorM); f.position.set(r[0] + w / 2, -0.05, r[1] + d / 2); world.add(f);
+    const f = new THREE.Mesh(scaleUV(new THREE.BoxGeometry(w, 0.1, d), w / 2, d / 2), floorM); f.position.set(r[0] + w / 2, -0.05, r[1] + d / 2); world.add(f);
     const c = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), ceilM); c.position.set(r[0] + w / 2, H + 0.05, r[1] + d / 2); world.add(c);
   });
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshLambertMaterial({ color: 0x8c8478 }));
@@ -365,7 +404,8 @@ function buildScene() {
     const [x1, z1, x2, z2, nx, nz, n, noWall, th] = w;
     const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz), t0 = th || 0.2;
     if (!noWall) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(len + (L.oct ? 0.15 : 0.2), H, t0), wallM);
+      const wl = len + (L.oct ? 0.15 : 0.2);
+      const m = new THREE.Mesh(scaleUV(new THREE.BoxGeometry(wl, H, t0), tall ? Math.max(1, Math.round(wl / 2)) : wl / 2, tall ? 1 : H / 2), wallM);
       m.position.set((x1 + x2) / 2, H / 2, (z1 + z2) / 2); m.rotation.y = Math.atan2(-dz, dx); world.add(m);
       colWalls.push([x1, z1, x2, z2, t0 / 2]);
     }
@@ -877,15 +917,28 @@ function openSettings(first) {
     <div><label class="f">입구 소개 글 (80자)</label><input id="stIntro" maxlength="80" value="${esc(g.intro)}" placeholder="예: 비와 물을 주제로 모았어요"></div></div>
     <label class="f">전시관 구조 (모두 명화 10점 + 내 그림 1점)</label>
     <div class="layouts">${LAYOUT_ORDER.map(k => `<button data-l="${k}" class="${g.layout === k ? 'on' : ''}"><b>${LAYOUTS[k].name}</b>${LAYOUTS[k].desc}</button>`).join('')}</div>
-    <div class="row"><div><label class="f">벽 색</label><div class="sw">${WALLS.map((w, i) => `<button data-w="${i}" title="${w.n}" style="background:${hex(w.c)}" class="${g.wall === i ? 'on' : ''}"></button>`).join('')}</div></div>
-    <div><label class="f">바닥</label><div class="sw">${FLOORS.map((w, i) => `<button data-f="${i}" title="${w.n}" style="background:${hex(w.c)}" class="${g.floor === i ? 'on' : ''}"></button>`).join('')}</div></div></div>
+    <label class="f">테마</label>
+    <div class="themes">${Object.entries(THEMES).map(([k, t]) => `<button data-th="${k}" class="${(g.theme || 'classic') === k ? 'on' : ''}"><img src="/tex/theme_${k}.jpg" alt=""><span>${t.n}</span></button>`).join('')}</div>
+    <div class="row"><div><label class="f">바닥 바꾸기</label><div class="tx" id="stFloor"></div></div>
+    <div><label class="f">벽 바꾸기</label><div class="tx" id="stWall"></div></div></div>
     <div style="margin-top:18px;display:flex;justify-content:space-between;align-items:center;gap:8px">
       ${first ? '<span></span>' : '<button class="danger" id="stReset">내 전시관 초기화</button>'}
       <button class="primary" id="stOk">${first ? '전시관 들어가기' : '확인'}</button></div>`);
   const mb = $('#mbody');
   mb.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { g.layout = b.dataset.l; mb.querySelectorAll('[data-l]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); spawn(); });
-  mb.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { g.wall = +b.dataset.w; mb.querySelectorAll('[data-w]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); });
-  mb.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { g.floor = +b.dataset.f; mb.querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); });
+  // 테마를 고르면 바닥·벽이 테마에 맞게 바뀌고, 그다음 바닥·벽만 따로 바꿀 수도 있음
+  const drawTex = () => {
+    const fk = floorKey(g), wk = wallKey(g);
+    $('#stFloor').innerHTML = Object.entries(FLOOR_TEX).map(([k, n]) => `<button data-f="${k}" class="${fk === k ? 'on' : ''}" title="${n}"><i style="background-image:url(/tex/floor_${k}.jpg)"></i><span>${n}</span></button>`).join('');
+    $('#stWall').innerHTML = Object.entries(WALL_TEX).map(([k, n]) => `<button data-w="${k}" class="${wk === k ? 'on' : ''}" title="${n}"><i style="background-image:url(/tex/wall_${k}.jpg)${TALL_WALLS[k] ? ';background-size:cover;background-position:center 30%' : ''}"></i><span>${n}</span></button>`).join('');
+    mb.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { g.floor = b.dataset.f; markDirty(); buildScene(); drawTex(); });
+    mb.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { g.wall = b.dataset.w; markDirty(); buildScene(); drawTex(); });
+  };
+  mb.querySelectorAll('[data-th]').forEach(b => b.onclick = () => {
+    g.theme = b.dataset.th; g.floor = ''; g.wall = '';
+    mb.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); markDirty(); buildScene(); drawTex();
+  });
+  drawTex();
   if (!first) $('#stReset').onclick = resetMine;
   $('#stOk').onclick = () => {
     const n = $('#stName').value.trim(), it = $('#stIntro').value.trim();
@@ -928,7 +981,7 @@ async function save() {
       painting = { path: r.path, url: r.url, title: S.pending.title, desc: S.pending.desc };
     } else if (S.pendingMeta) painting = S.pendingMeta;
     // 2) 전시관 정보 저장 (요청 1번)
-    const r = await api('PUT', '/api/save', { layout: g.layout, wall: g.wall, floor: g.floor, galleryName: g.galleryName, intro: g.intro, frames: g.frames.map(cleanObj), painting });
+    const r = await api('PUT', '/api/save', { layout: g.layout, theme: g.theme, wall: g.wall, floor: g.floor, galleryName: g.galleryName, intro: g.intro, frames: g.frames.map(cleanObj), painting });
     const tex = S.pending ? S.pending.tex : (g.painting && g.painting._tex);
     g.painting = r.gallery.painting; if (g.painting && tex) g.painting._tex = tex;
     r.gallery.frames.forEach((f, i) => { if (!f) g.frames[i] = null; });

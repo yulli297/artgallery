@@ -240,6 +240,9 @@ const clampInt = (v, a, b) => Math.min(b, Math.max(a, Math.round(Number(v) || 0)
 const IMG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const JPEG_URL = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
 const LAYOUT_KEYS = ['corridor', 'ell', 'oct', 'partition'];
+const THEME_KEYS = ['classic', 'european', 'modern', 'warm', 'salon', 'palace'];
+const FLOOR_KEYS = ['plank', 'parquet', 'darkwood', 'marble', 'beigemarble', 'terrazzo', 'concrete'];
+const WALL_KEYS = ['plaster', 'linen', 'damask', 'slat', 'concrete', 'brick', 'redsalon', 'palace'];
 const FRAME_COUNT = 10;
 function err(res, e) { console.error(e); res.status(500).json({ error: '서버에 문제가 생겼어요. 잠시 뒤 다시 해 주세요.' }); }
 const sameStr = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
@@ -260,7 +263,7 @@ function genPin(c) {
   }
 }
 function defaultGallery() {
-  return { layout: 'ell', wall: 0, floor: 0, galleryName: '', intro: '', frames: Array(FRAME_COUNT).fill(null), painting: null, updatedAt: 0 };
+  return { layout: 'ell', theme: 'classic', wall: '', floor: '', galleryName: '', intro: '', frames: Array(FRAME_COUNT).fill(null), painting: null, updatedAt: 0 };
 }
 async function updateSummary(cid, n, g) {
   const c = await getClass(cid);
@@ -420,7 +423,8 @@ app.put('/api/save', auth, async (req, res) => {
     const frames = Array.isArray(b.frames) ? b.frames : [];
     const g = {
       layout: LAYOUT_KEYS.includes(b.layout) ? b.layout : 'ell',
-      wall: clampInt(b.wall, 0, 4), floor: clampInt(b.floor, 0, 2),
+      theme: THEME_KEYS.includes(b.theme) ? b.theme : 'classic',
+      wall: WALL_KEYS.includes(b.wall) ? b.wall : '', floor: FLOOR_KEYS.includes(b.floor) ? b.floor : '',
       galleryName: str(b.galleryName, 20), intro: str(b.intro, 80),
       frames: Array.from({ length: FRAME_COUNT }, (_, i) => cleanFrame(frames[i], u)),
       painting, updatedAt: Date.now()
@@ -803,6 +807,7 @@ app.get('/api/img/:id/:size', async (req, res) => {
 });
 
 // ================= 화면 파일 =================
+app.use('/tex', express.static(path.join(__dirname, 'public', 'tex'), { maxAge: '30d' })); // 바닥·벽 재질은 기기에 30일 보관
 app.use('/vendor', express.static(path.join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d' }));
 app.use('/uploads', express.static(UP_DIR, { maxAge: '365d', immutable: true })); // Storage가 없을 때만 쓰임
 app.use(express.static(path.join(__dirname, 'public')));
