@@ -730,7 +730,7 @@ function openPicker(i) {
   const cur = S.g.frames[i];
   pk = { i, sel: cur ? Object.assign({}, cur) : null, items: [], tab: 'cat' };
   openModal(`<h3>명화 걸기 <small style="font-weight:400;color:var(--muted);font-size:15px">${i + 1}번 자리</small></h3>
-    <div class="tabs"><button data-t="cat">추천 명화</button><button data-t="search">미술관 3곳 검색 (영어)</button><button data-t="up">내가 찾은 명화 올리기</button></div>
+    <div class="tabs"><button data-t="cat">추천 명화</button><button data-t="search">세계 미술관 검색 (영어)</button><button data-t="up">내가 찾은 명화 올리기</button></div>
     <div id="pkSearch" class="row hidden" style="max-width:560px"><input id="pkQ" placeholder="예: Monet, flower, cat, sea"><button class="primary" id="pkGo" style="flex:0 0 auto">검색</button></div>
     <div id="pkUp" class="upbox hidden"><b>인터넷에서 찾은 명화 그림 파일을 올려요.</b><br>
       작가가 세상을 떠난 지 70년이 지난 작품을 골라 주세요. (예: 김홍도, 신윤복, 고흐, 모네)<br>
@@ -761,7 +761,7 @@ function pickTab(t) {
   $('#pkUp').classList.toggle('hidden', t !== 'up');
   $('#pkGrid').innerHTML = ''; $('#pkMsg').textContent = '';
   if (t === 'cat') showCatalog();
-  else if (t === 'search') { $('#pkMsg').textContent = '시카고·클리블랜드·메트로폴리탄 미술관에서 저작권 걱정 없는 작품만 찾아요. 영어로 화가 이름이나 그림 내용을 검색해 보세요.'; $('#pkQ').focus(); }
+  else if (t === 'search') { $('#pkMsg').textContent = `시카고·클리블랜드·메트로폴리탄·덴마크 국립미술관${S.cfg.europeana ? '·유로피아나(유럽 여러 미술관)' : ''}에서 저작권 걱정 없는 작품만 찾아요. 영어로 화가 이름이나 그림 내용을 검색해 보세요.`; $('#pkQ').focus(); }
 }
 async function showCatalog() {
   $('#pkMsg').textContent = '명화 목록을 불러오는 중…';
@@ -776,7 +776,7 @@ async function showCatalog() {
 async function doSearch() {
   const q = $('#pkQ').value.trim(); if (q.length < 2) { $('#pkMsg').textContent = '두 글자 이상 입력해 주세요.'; return; }
   if (/[ㄱ-힣]/.test(q)) { $('#pkMsg').textContent = '검색은 영어로 해 주세요. 예: 고흐 → van Gogh, 꽃 → flower'; return; }
-  $('#pkMsg').textContent = '미술관 3곳에서 찾는 중… (조금 걸릴 수 있어요)'; $('#pkGrid').innerHTML = '';
+  $('#pkMsg').textContent = '여러 미술관에서 찾는 중… (조금 걸릴 수 있어요)'; $('#pkGrid').innerHTML = '';
   try {
     const r = await api('GET', '/api/art/search?q=' + encodeURIComponent(q));
     if (!pk || pk.tab !== 'search') return;

@@ -295,7 +295,7 @@ function fail(k) {
 
 // ================= 기본 정보 =================
 app.get('/api/config', (req, res) => {
-  res.json({ classes: CLASSES, maxStudents: MAX_STUDENTS, storage: fb ? 'firestore' : 'local', images: fb && fb.storage ? 'firebase' : 'local' });
+  res.json({ europeana: !!EUROPEANA_KEY, classes: CLASSES, maxStudents: MAX_STUDENTS, storage: fb ? 'firestore' : 'local', images: fb && fb.storage ? 'firebase' : 'local' });
 });
 
 // ================= 로그인 =================
@@ -395,7 +395,7 @@ function cleanFrame(f, u) {
     return Object.assign({ src: 'up', path: f.path, url: f.url }, info);
   }
   if (f.src === 'ext') {
-    if (typeof f.img !== 'string' || f.img.length > 400 || !EXT_HOSTS.test(f.img)) return null;
+    if (typeof f.img !== 'string' || f.img.length > 900 || !EXT_HOSTS.test(f.img)) return null;
     return Object.assign({ src: 'ext', img: f.img, museum: str(f.museum, 20) }, info);
   }
   if (!IMG_ID.test(f.imageId || '')) return null;
@@ -687,8 +687,10 @@ app.get('/api/art/catalog', auth, (req, res) => {
 });
 
 // ----- 미술관 3곳 통합 검색 (모두 인증 키 없이, 저작권 없는 작품만) -----
-// 시카고 미술관 + 클리블랜드 미술관(CC0) + 메트로폴리탄 미술관(퍼블릭 도메인)
-const EXT_HOSTS = /^https:\/\/(images\.metmuseum\.org|openaccess-cdn\.clevelandart\.org)\//;
+// 시카고 미술관 + 클리블랜드 미술관(CC0) + 메트로폴리탄 미술관(퍼블릭 도메인) + 덴마크 국립미술관(SMK)
+// + 유로피아나(유럽 여러 미술관 모음, EUROPEANA_KEY 환경변수가 있을 때만)
+const EXT_HOSTS = /^https:\/\/(images\.metmuseum\.org\/|openaccess-cdn\.clevelandart\.org\/|iip-thumb\.smk\.dk\/|api\.europeana\.eu\/thumbnail\/)/;
+const EUROPEANA_KEY = process.env.EUROPEANA_KEY || '';
 const getJson = async (url, ms = 10000) => {
   const r = await fetch(url, { headers: AIC_HEADERS, signal: AbortSignal.timeout(ms) });
   if (!r.ok) throw new Error(r.status + ' ' + url);
@@ -719,6 +721,38 @@ async function metSearch(q) {
   }
   return out;
 }
+async function smkSearch(q) {
+  const j = await getJson('https://api.smk.dk/api/v1/art/search/?keys=' + encodeURIComponent(q) +
+    '&filters=[has_image:true],[public_domain:true]&offset=0&rows=24&lang=en');
+  return (j.items || []).map(a => {
+    const img = a.image_thumbnail;
+    if (!img || !EXT_HOSTS.test(img)) return null;
+    const t = (a.titles || []).find(x => /engelsk|english/i.test(x.language || '')) || (a.titles || [])[0] || {};
+    const p = (a.production || [])[0] || {};
+    const artist = [p.creator_forename, p.creator_surname].filter(Boolean).join(' ') || p.creator || '작가 미상';
+    const date = ((a.production_date || [])[0] || {}).period || '';
+    return { src: 'ext', museum: '덴마크 국립미술관', img, title: t.title || '제목 없음', artist, date };
+  }).filter(Boolean);
+}
+let euWarned = false;
+async function euSearch(q) {
+  if (!EUROPEANA_KEY) return [];
+  const url = 'https://api.europeana.eu/record/v2/search.json?wskey=' + encodeURIComponent(EUROPEANA_KEY) + '&query=' + encodeURIComponent(q) +
+    '&reusability=open&media=true&thumbnail=true&qf=TYPE:IMAGE&rows=30&profile=minimal';
+  let j;
+  try { j = await getJson(url); }
+  catch (e) { if (!euWarned) { euWarned = true; console.warn('[유로피아나] 검색 실패 - EUROPEANA_KEY가 맞는지 확인해 주세요:', e.message.replace(EUROPEANA_KEY, '***')); } throw new Error('europeana'); }
+  const first = a => (Array.isArray(a) ? a[0] : a) || '';
+  return (j.items || []).map(a => {
+    const orig = first(a.edmIsShownBy);
+    // 유로피아나 썸네일 서비스(너비 400px)로 받아서 주소를 하나로 통일
+    const img = orig ? `https://api.europeana.eu/thumbnail/v2/url.json?uri=${encodeURIComponent(orig)}&type=IMAGE&size=w400` : first(a.edmPreview);
+    if (!img || !EXT_HOSTS.test(img) || img.length > 900) return null;
+    const creator = (a.dcCreator || []).find(c => c && !/^https?:/.test(c)) || '작가 미상';
+    const where = first(a.dataProvider);
+    return { src: 'ext', museum: where ? `유로피아나 · ${String(where).slice(0, 30)}` : '유로피아나', img, title: first(a.title) || '제목 없음', artist: creator, date: first(a.year) };
+  }).filter(Boolean);
+}
 async function aicItems(q) {
   return (await aicSearch(q, 40)).slice(0, 20).map(a => ({
     src: 'aic', museum: '시카고 미술관', id: a.id, imageId: a.image_id, title: a.title, artist: a.artist_title || '작가 미상', date: a.date_display || ''
@@ -731,13 +765,13 @@ app.get('/api/art/search', auth, async (req, res) => {
     if (q.length < 2) return res.json({ items: [] });
     const k = q.toLowerCase();
     if (searchCache.has(k)) return res.json({ items: searchCache.get(k) });
-    const lists = await Promise.allSettled([aicItems(q), cmaSearch(q), metSearch(q)]);
-    lists.forEach((l, i) => { if (l.status === 'rejected') console.warn('[명화 검색] 실패:', ['시카고', '클리블랜드', '메트로폴리탄'][i], l.reason && l.reason.message); });
+    const lists = await Promise.allSettled([aicItems(q), cmaSearch(q), metSearch(q), smkSearch(q), euSearch(q)]);
+    lists.forEach((l, i) => { if (l.status === 'rejected' && i < 4) console.warn('[명화 검색] 실패:', ['시카고', '클리블랜드', '메트로폴리탄', '덴마크'][i], l.reason && l.reason.message); });
     const ok = lists.filter(l => l.status === 'fulfilled').map(l => l.value);
     if (!ok.length) throw new Error('all failed');
     // 세 미술관 결과를 번갈아 섞기
     const items = [];
-    for (let i = 0; items.length < 60 && ok.some(l => l[i]); i++) ok.forEach(l => { if (l[i]) items.push(l[i]); });
+    for (let i = 0; items.length < 80 && ok.some(l => l[i]); i++) ok.forEach(l => { if (l[i]) items.push(l[i]); });
     searchCache.set(k, items);
     if (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value);
     res.json({ items });
@@ -752,7 +786,7 @@ const extCache = new Map(), extInflight = new Map();
 app.get('/api/ext', async (req, res) => {
   try {
     const u = String(req.query.u || '');
-    if (!EXT_HOSTS.test(u) || u.length > 400) return res.status(400).end();
+    if (!EXT_HOSTS.test(u) || u.length > 900) return res.status(400).end();
     let buf = extCache.get(u);
     if (!buf) {
       let job = extInflight.get(u);
@@ -762,6 +796,7 @@ app.get('/api/ext', async (req, res) => {
           if (!r.ok) return null;
           const b = Buffer.from(await r.arrayBuffer());
           if (b.length > 6e6) return null;
+          b.type = r.headers.get('content-type') || 'image/jpeg';
           extCache.set(u, b);
           if (extCache.size > 150) extCache.delete(extCache.keys().next().value);
           return b;
@@ -771,7 +806,7 @@ app.get('/api/ext', async (req, res) => {
       buf = await job;
       if (!buf) return res.status(404).end();
     }
-    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=604800, immutable' });
+    res.set({ 'Content-Type': buf.type || 'image/jpeg', 'Cache-Control': 'public, max-age=604800, immutable' });
     res.send(buf);
   } catch (e) { res.status(502).end(); }
 });
