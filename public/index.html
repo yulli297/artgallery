@@ -649,7 +649,8 @@ function setupControls() {
     if (!drag || drag.id !== e.pointerId) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
     const sp = LOOK_SPEEDS[lookSpeed].drag;
-    P.ty += dx * sp; P.tp = Math.max(-0.6, Math.min(0.6, P.tp + dy * sp * 0.8));
+    // 드래그한 쪽으로 시선이 따라감 (오른쪽으로 밀면 오른쪽을, 위로 밀면 위를 봄)
+    P.ty -= dx * sp; P.tp = Math.max(-0.6, Math.min(0.6, P.tp - dy * sp * 0.8));
   });
   el.addEventListener('pointerup', e => {
     if (!drag || drag.id !== e.pointerId) return;
